@@ -1,0 +1,17 @@
+{
+  "appId": "com.pixelclock.mobile",
+  "appName": "Pixel Clock",
+  "webDir": "www",
+  "loggingBehavior": "debug",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "cleartext": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

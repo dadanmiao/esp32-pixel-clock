@@ -1,0 +1,405 @@
+/*
+ * Author: Yang
+ * Pixel game logic for the Game display mode.
+ */
+#include "game_logic.h"
+
+#include <cmath>
+
+#include <Arduino.h>
+
+namespace {
+bool isOpposite(GameDirection a, GameDirection b) {
+  return (a == GameDirection::Up && b == GameDirection::Down) ||
+         (a == GameDirection::Down && b == GameDirection::Up) ||
+         (a == GameDirection::Left && b == GameDirection::Right) ||
+         (a == GameDirection::Right && b == GameDirection::Left);
+}
+
+bool samePoint(GamePoint a, GamePoint b) {
+  return a.x == b.x && a.y == b.y;
+}
+
+GamePoint nextPoint(GamePoint point, GameDirection dir) {
+  switch (dir) {
+    case GameDirection::Up:
+      point.y--;
+      break;
+    case GameDirection::Down:
+      point.y++;
+      break;
+    case GameDirection::Left:
+      point.x--;
+      break;
+    case GameDirection::Right:
+    default:
+      point.x++;
+      break;
+  }
+  return point;
+}
+
+bool pointInBounds(GamePoint point) {
+  return point.x >= 0 && point.x < GameBoardW && point.y >= 0 && point.y < GameBoardH;
+}
+
+uint16_t boundedGameSpeed(uint16_t speedMs) {
+  return constrain(speedMs, static_cast<uint16_t>(60), static_cast<uint16_t>(600));
+}
+
+uint32_t breakoutFullBrickMask() {
+  uint32_t mask = 0;
+  for (uint8_t i = 0; i < BreakoutBrickCount; ++i) {
+    mask |= 1UL << i;
+  }
+  return mask;
+}
+
+void updateHighScore(GameState &game) {
+  if (game.score > game.highScore) {
+    game.highScore = game.score;
+  }
+}
+
+void addGameScore(GameState &game) {
+  game.score++;
+  updateHighScore(game);
+}
+
+void finishGame(GameState &game) {
+  game.runState = GameRunState::GameOver;
+  updateHighScore(game);
+}
+
+void placeFood(GameState &game) {
+  for (uint8_t tries = 0; tries < 120; ++tries) {
+    const GamePoint food{
+        static_cast<int8_t>(random(0, GameBoardW)),
+        static_cast<int8_t>(random(0, GameBoardH)),
+    };
+
+    bool occupied = false;
+    for (uint16_t i = 0; i < game.snakeLen; ++i) {
+      if (samePoint(game.snake[i], food)) {
+        occupied = true;
+        break;
+      }
+    }
+
+    if (!occupied) {
+      game.food = food;
+      return;
+    }
+  }
+
+  game.food = {0, 0};
+}
+
+bool snakeHitsSelf(const GameState &game, GamePoint head, bool eating) {
+  const uint16_t checkLen = eating || game.snakeLen == 0 ? game.snakeLen : game.snakeLen - 1;
+  for (uint16_t i = 0; i < checkLen; ++i) {
+    if (samePoint(game.snake[i], head)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void resetSnake(GameState &game) {
+  game.snakeLen = 3;
+  game.snake[0] = {16, 4};
+  game.snake[1] = {15, 4};
+  game.snake[2] = {14, 4};
+  game.dir = GameDirection::Right;
+  game.nextDir = GameDirection::Right;
+  placeFood(game);
+}
+
+void resetGravityBall(GameState &game) {
+  game.ball = {16, 4};
+  game.target = {25, 4};
+  game.nextDir = GameDirection::Right;
+}
+
+void resetBreakout(GameState &game) {
+  game.breakoutPaddleX = static_cast<int8_t>((GameBoardW - BreakoutPaddleWidth) / 2);
+  game.ball = {static_cast<int8_t>(GameBoardW / 2), static_cast<int8_t>(GameBoardH - 3)};
+  game.breakoutVelX = random(0, 2) == 0 ? -1 : 1;
+  game.breakoutVelY = -1;
+  game.breakoutBricks = breakoutFullBrickMask();
+  game.nextDir = GameDirection::Up;
+}
+
+void resetReaction(GameState &game) {
+  game.reactionReady = false;
+  game.reactionStartMs = millis();
+  game.reactionWaitMs = random(1500, 5000);
+}
+
+int breakoutBrickIndexAt(int x, int y) {
+  if (x < 0 || x >= GameBoardW || y < 0 || y >= BreakoutBrickRows) {
+    return -1;
+  }
+  return y * BreakoutBrickCols + x / BreakoutBrickWidth;
+}
+
+bool hasBreakoutBrick(const GameState &game, int brickIndex) {
+  if (brickIndex < 0 || brickIndex >= BreakoutBrickCount) {
+    return false;
+  }
+  return (game.breakoutBricks & (1UL << brickIndex)) != 0;
+}
+
+void clearBreakoutBrick(GameState &game, int brickIndex) {
+  if (brickIndex < 0 || brickIndex >= BreakoutBrickCount) {
+    return;
+  }
+  game.breakoutBricks &= ~(1UL << brickIndex);
+}
+
+void moveBreakoutPaddle(GameState &game, int8_t dx) {
+  if (dx == 0) {
+    return;
+  }
+  game.breakoutPaddleX = static_cast<int8_t>(
+      constrain(static_cast<int>(game.breakoutPaddleX) + dx, 0, GameBoardW - BreakoutPaddleWidth));
+}
+
+void updateDirectionFromMpu(GameState &game, const EnvironmentState &env) {
+  const float ax = env.accelX;
+  const float ay = env.accelY;
+  if (fabsf(ax) < 0.25f && fabsf(ay) < 0.25f) {
+    return;
+  }
+
+  if (fabsf(ax) > fabsf(ay)) {
+    gameSetDirection(game, ax > 0.25f ? GameDirection::Right : GameDirection::Left);
+  } else {
+    gameSetDirection(game, ay > 0.25f ? GameDirection::Down : GameDirection::Up);
+  }
+}
+
+void updateSnake(GameState &game) {
+  game.dir = game.nextDir;
+  const GamePoint newHead = nextPoint(game.snake[0], game.dir);
+  const bool eating = samePoint(newHead, game.food);
+
+  if (!pointInBounds(newHead) || snakeHitsSelf(game, newHead, eating)) {
+    finishGame(game);
+    return;
+  }
+
+  uint16_t newLen = game.snakeLen;
+  if (eating && newLen < SnakeMaxLen) {
+    newLen++;
+  }
+
+  for (int i = static_cast<int>(newLen) - 1; i > 0; --i) {
+    game.snake[i] = game.snake[i - 1];
+  }
+  game.snake[0] = newHead;
+  game.snakeLen = newLen;
+
+  if (!eating) {
+    return;
+  }
+
+  game.score++;
+  updateHighScore(game);
+  if (game.snakeLen >= SnakeMaxLen) {
+    finishGame(game);
+    return;
+  }
+  placeFood(game);
+}
+
+void updateGravityBall(GameState &game, const EnvironmentState &env, bool useMpu) {
+  int8_t dx = 0;
+  int8_t dy = 0;
+
+  if (useMpu) {
+    if (env.accelX > 0.25f) {
+      dx = 1;
+    } else if (env.accelX < -0.25f) {
+      dx = -1;
+    }
+    if (env.accelY > 0.25f) {
+      dy = 1;
+    } else if (env.accelY < -0.25f) {
+      dy = -1;
+    }
+  } else {
+    const GamePoint step = nextPoint({0, 0}, game.nextDir);
+    dx = step.x;
+    dy = step.y;
+  }
+
+  game.ball.x = constrain(static_cast<int>(game.ball.x + dx), 0, GameBoardW - 1);
+  game.ball.y = constrain(static_cast<int>(game.ball.y + dy), 0, GameBoardH - 1);
+
+  if (!samePoint(game.ball, game.target)) {
+    return;
+  }
+
+  addGameScore(game);
+  game.target = {
+      static_cast<int8_t>(random(0, GameBoardW)),
+      static_cast<int8_t>(random(0, GameBoardH)),
+  };
+}
+
+void updateBreakout(GameState &game, const EnvironmentState &env, bool useMpu) {
+  int8_t paddleDx = 0;
+  if (useMpu) {
+    if (env.accelX > 0.25f) {
+      paddleDx = 1;
+    } else if (env.accelX < -0.25f) {
+      paddleDx = -1;
+    }
+  } else if (game.nextDir == GameDirection::Left) {
+    paddleDx = -2;
+  } else if (game.nextDir == GameDirection::Right) {
+    paddleDx = 2;
+  }
+  moveBreakoutPaddle(game, paddleDx);
+  if (!useMpu && (game.nextDir == GameDirection::Left || game.nextDir == GameDirection::Right)) {
+    game.nextDir = GameDirection::Up;
+  }
+
+  int nextX = game.ball.x + game.breakoutVelX;
+  int nextY = game.ball.y + game.breakoutVelY;
+
+  if (nextX < 0) {
+    nextX = 0;
+    game.breakoutVelX = 1;
+  } else if (nextX >= GameBoardW) {
+    nextX = GameBoardW - 1;
+    game.breakoutVelX = -1;
+  }
+
+  if (nextY < 0) {
+    nextY = 0;
+    game.breakoutVelY = 1;
+  }
+
+  const int brickIndex = breakoutBrickIndexAt(nextX, nextY);
+  if (hasBreakoutBrick(game, brickIndex)) {
+    clearBreakoutBrick(game, brickIndex);
+    addGameScore(game);
+    game.breakoutVelY = 1;
+    nextY = constrain(static_cast<int>(game.ball.y + game.breakoutVelY), 0, GameBoardH - 1);
+    if (game.breakoutBricks == 0) {
+      game.breakoutBricks = breakoutFullBrickMask();
+    }
+  }
+
+  constexpr int PaddleY = GameBoardH - 1;
+  if (nextY >= PaddleY) {
+    const int paddleLeft = game.breakoutPaddleX;
+    const int paddleRight = paddleLeft + BreakoutPaddleWidth - 1;
+    if (nextX < paddleLeft || nextX > paddleRight) {
+      finishGame(game);
+      return;
+    }
+
+    nextY = PaddleY - 1;
+    game.breakoutVelY = -1;
+    const int hitOffset = nextX - paddleLeft;
+    if (hitOffset <= 1) {
+      game.breakoutVelX = -1;
+    } else if (hitOffset >= BreakoutPaddleWidth - 2) {
+      game.breakoutVelX = 1;
+    }
+  }
+
+  game.ball = {static_cast<int8_t>(nextX), static_cast<int8_t>(nextY)};
+}
+} // namespace
+
+void gameReset(GameState &game, const ControlState &control) {
+  const uint32_t highScore = game.highScore;
+  game = GameState();
+  game.highScore = highScore;
+  game.type = control.gameType;
+  game.runState = GameRunState::Idle;
+  game.score = 0;
+  game.lastStepMs = millis();
+  game.stepIntervalMs = boundedGameSpeed(control.gameSpeedMs);
+
+  switch (game.type) {
+    case GameType::Breakout:
+      resetBreakout(game);
+      break;
+    case GameType::GravityBall:
+      resetGravityBall(game);
+      break;
+    case GameType::Reaction:
+      resetReaction(game);
+      break;
+    case GameType::Snake:
+    default:
+      resetSnake(game);
+      break;
+  }
+}
+
+void gameStart(GameState &game) {
+  game.runState = GameRunState::Running;
+  game.lastStepMs = millis();
+}
+
+void gamePause(GameState &game) {
+  if (game.runState == GameRunState::Running) {
+    game.runState = GameRunState::Paused;
+  }
+}
+
+void gameResume(GameState &game) {
+  if (game.runState == GameRunState::Paused) {
+    game.runState = GameRunState::Running;
+    game.lastStepMs = millis();
+  }
+}
+
+void gameSetDirection(GameState &game, GameDirection dir) {
+  if (game.type == GameType::Snake && game.runState == GameRunState::Running && isOpposite(game.dir, dir)) {
+    return;
+  }
+  game.nextDir = dir;
+}
+
+void gameUpdate(GameState &game, const ControlState &control, const EnvironmentState &env) {
+  if (game.type != control.gameType) {
+    gameReset(game, control);
+  }
+
+  game.stepIntervalMs = boundedGameSpeed(control.gameSpeedMs);
+  if (control.gameUseMpuControl && game.type != GameType::Breakout) {
+    updateDirectionFromMpu(game, env);
+  }
+  if (game.runState != GameRunState::Running) {
+    return;
+  }
+
+  const uint32_t now = millis();
+  if (now - game.lastStepMs < game.stepIntervalMs) {
+    return;
+  }
+  game.lastStepMs = now;
+
+  switch (game.type) {
+    case GameType::Breakout:
+      updateBreakout(game, env, control.gameUseMpuControl);
+      break;
+    case GameType::GravityBall:
+      updateGravityBall(game, env, control.gameUseMpuControl);
+      break;
+    case GameType::Snake:
+      updateSnake(game);
+      break;
+    case GameType::Reaction:
+    case GameType::Pong:
+    default:
+      break;
+  }
+}
