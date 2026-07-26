@@ -211,6 +211,17 @@ void moveBreakoutPaddle(GameState &game, int8_t dx) {
       constrain(static_cast<int>(game.breakoutPaddleX) + dx, 0, GameBoardW - BreakoutPaddleWidth));
 }
 
+int8_t horizontalTiltStep(const EnvironmentState &env, int8_t magnitude = 1) {
+  // The display faces the opposite direction from the MPU X axis.
+  if (env.accelX > 0.25f) {
+    return -magnitude;
+  }
+  if (env.accelX < -0.25f) {
+    return magnitude;
+  }
+  return 0;
+}
+
 void updateDirectionFromMpu(GameState &game, const EnvironmentState &env) {
   const float ax = env.accelX;
   const float ay = env.accelY;
@@ -219,7 +230,7 @@ void updateDirectionFromMpu(GameState &game, const EnvironmentState &env) {
   }
 
   if (fabsf(ax) > fabsf(ay)) {
-    gameSetDirection(game, ax > 0.25f ? GameDirection::Right : GameDirection::Left);
+    gameSetDirection(game, ax > 0.25f ? GameDirection::Left : GameDirection::Right);
   } else {
     gameSetDirection(game, ay > 0.25f ? GameDirection::Down : GameDirection::Up);
   }
@@ -266,11 +277,7 @@ void updateGravityBall(GameState &game, const EnvironmentState &env, bool useMpu
   int8_t dy = 0;
 
   if (useMpu) {
-    if (env.accelX > 0.25f) {
-      dx = 1;
-    } else if (env.accelX < -0.25f) {
-      dx = -1;
-    }
+    dx = horizontalTiltStep(env);
     if (env.accelY > 0.25f) {
       dy = 1;
     } else if (env.accelY < -0.25f) {
@@ -304,11 +311,7 @@ void updateGravityBall(GameState &game, const EnvironmentState &env, bool useMpu
 void updateBreakout(GameState &game, const EnvironmentState &env, bool useMpu) {
   int8_t paddleDx = 0;
   if (useMpu) {
-    if (env.accelX > 0.25f) {
-      paddleDx = 2;
-    } else if (env.accelX < -0.25f) {
-      paddleDx = -2;
-    }
+    paddleDx = horizontalTiltStep(env, 2);
   } else if (game.nextDir == GameDirection::Left) {
     paddleDx = -2;
   } else if (game.nextDir == GameDirection::Right) {
@@ -371,11 +374,7 @@ void updateBreakout(GameState &game, const EnvironmentState &env, bool useMpu) {
 void updatePong(GameState &game, const EnvironmentState &env, bool useMpu) {
   int8_t paddleDx = 0;
   if (useMpu) {
-    if (env.accelX > 0.25f) {
-      paddleDx = 2;
-    } else if (env.accelX < -0.25f) {
-      paddleDx = -2;
-    }
+    paddleDx = horizontalTiltStep(env, 2);
   } else if (game.nextDir == GameDirection::Left) {
     paddleDx = -2;
   } else if (game.nextDir == GameDirection::Right) {
