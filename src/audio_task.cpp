@@ -89,9 +89,8 @@ bool initAdcDma() {
 }
 
 void publishAudioState() {
-  RenderState state = copySharedState();
-  const ControlState control = state.control;
-  AudioState audio = state.audio;
+  const ControlState control = copyControlState();
+  AudioState audio = copyAudioState();
   double sumSquares = 0.0;
   double peak = 0.0;
 
@@ -207,7 +206,7 @@ void publishAudioState() {
     audio.lastBeatMs = now;
   }
 
-  audio.frameCounter = state.audio.frameCounter + 1;
+  ++audio.frameCounter;
   updateAudioState(audio);
   pushRenderSnapshot(0);
 }

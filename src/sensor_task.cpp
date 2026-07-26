@@ -126,15 +126,15 @@ void sensorTask(void *) {
 
   uint32_t slowCounter = 0;
   while (true) {
-    RenderState state = copySharedState();
-    EnvironmentState env = state.environment;
+    const ControlState control = copyControlState();
+    EnvironmentState env = copyEnvironmentState();
 
     uint16_t rawLdr = env.rawLdr;
     if (!readAdcRaw(Pinmap::LDR_ADC_CH, rawLdr)) {
       rawLdr = analogRead(static_cast<uint8_t>(Pinmap::LDR_ADC));
     }
     env.rawLdr = rawLdr;
-    env.adaptiveBrightness = mapBrightness(env.rawLdr, state.control);
+    env.adaptiveBrightness = mapBrightness(env.rawLdr, control);
 
     if (readMpu6500(env)) {
       env.mpuOnline = true;

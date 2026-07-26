@@ -8,7 +8,7 @@ SharedState gState;
 
 bool initSharedState() {
   gState.mutex = xSemaphoreCreateMutex();
-  gState.renderQueue = xQueueCreate(2, sizeof(RenderState));
+  gState.renderQueue = xQueueCreate(1, sizeof(RenderState));
   return gState.mutex != nullptr && gState.renderQueue != nullptr;
 }
 
@@ -29,6 +29,42 @@ RenderState copySharedState() {
   }
   if (xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
     copy = gState.snapshot;
+    xSemaphoreGive(gState.mutex);
+  }
+  return copy;
+}
+
+ControlState copyControlState() {
+  ControlState copy;
+  if (gState.mutex && xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    copy = gState.snapshot.control;
+    xSemaphoreGive(gState.mutex);
+  }
+  return copy;
+}
+
+AudioState copyAudioState() {
+  AudioState copy;
+  if (gState.mutex && xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    copy = gState.snapshot.audio;
+    xSemaphoreGive(gState.mutex);
+  }
+  return copy;
+}
+
+EnvironmentState copyEnvironmentState() {
+  EnvironmentState copy;
+  if (gState.mutex && xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    copy = gState.snapshot.environment;
+    xSemaphoreGive(gState.mutex);
+  }
+  return copy;
+}
+
+PowerState copyPowerState() {
+  PowerState copy;
+  if (gState.mutex && xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    copy = gState.snapshot.power;
     xSemaphoreGive(gState.mutex);
   }
   return copy;
@@ -163,14 +199,16 @@ bool pushRenderSnapshot(TickType_t timeoutTicks) {
   if (!gState.renderQueue) {
     return false;
   }
-
-  RenderState copy = copySharedState();
-  if (xQueueSend(gState.renderQueue, &copy, timeoutTicks) != pdTRUE) {
-    RenderState dropped;
-    xQueueReceive(gState.renderQueue, &dropped, 0);
-    xQueueSend(gState.renderQueue, &copy, 0);
+  (void)timeoutTicks;
+  if (!gState.mutex) {
+    return false;
   }
-  return true;
+  if (xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(10)) != pdTRUE) {
+    return false;
+  }
+  const BaseType_t result = xQueueOverwrite(gState.renderQueue, &gState.snapshot);
+  xSemaphoreGive(gState.mutex);
+  return result == pdPASS;
 }
 
 void updateScreenSnapshot(const CRGB *leds, size_t count) {

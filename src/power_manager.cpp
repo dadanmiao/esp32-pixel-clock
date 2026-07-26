@@ -56,9 +56,9 @@ void applyPowerPolicy(float vbus, PowerState &power) {
 
 void powerTask(void *) {
   while (true) {
-    RenderState state = copySharedState();
-    applyPowerPolicy(readVbusVoltage(), state.power);
-    updatePowerState(state.power);
+    PowerState power = copyPowerState();
+    applyPowerPolicy(readVbusVoltage(), power);
+    updatePowerState(power);
     pushRenderSnapshot(0);
     vTaskDelay(pdMS_TO_TICKS(AppConfig::PowerPollMs));
   }
@@ -74,9 +74,9 @@ void initPowerManager() {
   analogSetPinAttenuation(static_cast<uint8_t>(Pinmap::MIC_ADC), ADC_11db);
   analogSetPinAttenuation(static_cast<uint8_t>(Pinmap::LDR_ADC), ADC_11db);
 
-  RenderState state = copySharedState();
-  applyPowerPolicy(readVbusVoltage(), state.power);
-  updatePowerState(state.power);
+  PowerState power = copyPowerState();
+  applyPowerPolicy(readVbusVoltage(), power);
+  updatePowerState(power);
 }
 
 void startPowerTask() {
@@ -87,8 +87,8 @@ void markSystemFullyStarted() {
   systemStartedAtMs = millis() - AppConfig::DcdcEnableDelayMs;
   systemFullyStarted = true;
 
-  RenderState state = copySharedState();
-  applyPowerPolicy(readVbusVoltage(), state.power);
-  updatePowerState(state.power);
+  PowerState power = copyPowerState();
+  applyPowerPolicy(readVbusVoltage(), power);
+  updatePowerState(power);
   pushRenderSnapshot(0);
 }
