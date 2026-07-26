@@ -7,7 +7,7 @@
 #include <Arduino.h>
 
 namespace AppConfig {
-constexpr const char *FirmwareVersion = "2.5.0";
+constexpr const char *FirmwareVersion = "2.5.1";
 constexpr uint16_t MatrixWidth = 32;
 constexpr uint16_t MatrixHeight = 8;
 constexpr uint16_t LedCount = MatrixWidth * MatrixHeight;
