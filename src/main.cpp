@@ -81,6 +81,12 @@ void initInitialState() {
 }
 } // namespace
 
+size_t getArduinoLoopTaskStackSize() {
+  // RenderState contains the game, notification, and Desk AI evidence snapshots.
+  // The Arduino default of 8 KB is no longer sufficient when these snapshots are copied.
+  return 16 * 1024;
+}
+
 void setup() {
   Serial.begin(115200);
   delay(300);
