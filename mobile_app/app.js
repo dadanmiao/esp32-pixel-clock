@@ -3,6 +3,7 @@ const CLOCK_THEMES = ["Classic", "Rainbow", "Breath", "Night", "Minimal"];
 const AUDIO_MODES = ["Spectrum", "Mirror", "VU", "Bass", "Fire", "Burst"];
 const GAME_STATES = ["Idle", "Running", "Paused", "GameOver"];
 const SCENE_REASONS = ["手动场景", "安静时段", "音乐活动", "姿态交互", "计时进行中"];
+const DESK_STATES = ["Unknown", "Focus", "Meeting", "Rest", "Away"];
 const CUSTOM_SCENE_STORAGE_KEY = "pixelClock.customScenes.v1";
 const CUSTOM_SCENE_LIMIT = 12;
 
@@ -50,6 +51,8 @@ function createMockState() {
     transitionDurationMs: 320,
     gammaCorrection: true,
     smartScenes: false,
+    deskAiEnabled: true,
+    deskAiAutoScene: false,
     quietStartHour: 23,
     quietEndHour: 7,
     nightBrightnessCap: 22,
@@ -165,6 +168,41 @@ function createMockState() {
       ballX: 16,
       ballY: 4,
     },
+    deskAi: {
+      enabled: true,
+      autoScene: false,
+      state: 1,
+      label: "Focus",
+      confidence: 0.82,
+      baselineState: 3,
+      baselineLabel: "Rest",
+      baselineConfidence: 0.65,
+      features: [0.12, 0.08, 0.04, 0.38, 0.13],
+      scores: [0.82, 0.31, 0.54, 0.22],
+      samples: [8, 8, 8, 8],
+      profileCoverage: 4,
+      profileQuality: 78,
+      profileReady: true,
+      centroidSeparation: 0.24,
+      minSamplesPerClass: 4,
+      recommendedSamplesPerClass: 8,
+      inferenceCount: 1,
+      inferenceMicros: 124,
+      lastCalibrationLabel: "Unknown",
+      offlineInferenceCount: 24,
+      lastInferenceOffline: false,
+      evaluation: {
+        total: 8,
+        personalizedCorrect: 7,
+        baselineCorrect: 4,
+        samples: [2, 2, 2, 2],
+        confusion: [[2, 0, 0, 0], [0, 2, 0, 0], [0, 1, 1, 0], [0, 0, 0, 1]],
+      },
+      timeline: [
+        [0, 1, 82, false], [30000, 1, 79, false], [60000, 2, 71, false],
+        [90000, 2, 76, true], [120000, 3, 68, true], [150000, 1, 83, false],
+      ],
+    },
     smoothSpectrum: Array.from({ length: 32 }, (_, i) => Math.max(0, Math.sin(i / 4) * 3 + 2)),
     _mockStartedAt: Date.now(),
     _timerStartedAt: 0,
@@ -266,6 +304,34 @@ function bindControls() {
   );
   bindCheckbox("autoBrightness", (checked) => postControl({ autoBrightness: checked }));
   bindCheckbox("smartScenes", (checked) => postControl({ smartScenes: checked }));
+  bindCheckbox("deskAiEnabled", (checked) => postControl({ deskAiEnabled: checked }));
+  bindCheckbox("deskAiAutoScene", (checked) => postControl({ deskAiAutoScene: checked }));
+  qsa("[data-ai-label]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const ok = await postControl({ deskAiCalibration: Number(button.dataset.aiLabel) });
+      if (ok) toast("Calibration sample saved");
+    });
+  });
+  byId("deskAiResetProfile").addEventListener("click", () => confirmAction(
+    "Reset all local Desk AI calibration samples?",
+    async () => {
+      const ok = await postControl({ deskAiResetProfile: true });
+      if (ok) toast("Calibration profile reset");
+    },
+  ));
+  qsa("[data-ai-evaluation]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const ok = await postControl({ deskAiEvaluationLabel: Number(button.dataset.aiEvaluation) });
+      if (ok) toast("Ground-truth sample recorded");
+    });
+  });
+  byId("deskAiResetEvaluation").addEventListener("click", () => confirmAction(
+    "Reset this validation run and its confusion matrix?",
+    async () => {
+      const ok = await postControl({ deskAiResetEvaluation: true });
+      if (ok) toast("Validation run reset");
+    },
+  ));
   bindCheckbox("gammaCorrection", (checked) => postControl({ gammaCorrection: checked }));
   bindCheckbox("smoothTransitions", (checked) => postControl({ smoothTransitions: checked }));
   bindSelect("transitionStyle", (value) => postControl({ transitionStyle: Number(value) }));
@@ -570,6 +636,7 @@ function receiveState(data) {
   app.state.network = { ...app.state.network, ...(normalized.network || {}) };
   app.state.weather = { ...app.state.weather, ...(normalized.weather || {}) };
   app.state.game = { ...app.state.game, ...(normalized.game || {}) };
+  app.state.deskAi = { ...app.state.deskAi, ...(normalized.deskAi || {}) };
 }
 
 function normalizeState(data) {
@@ -601,6 +668,9 @@ function normalizeState(data) {
     },
     weather: data.weather || app.state.weather,
     game: data.game || app.state.game,
+    deskAiEnabled: data.deskAiEnabled ?? data.deskAi?.enabled ?? app.state.deskAiEnabled,
+    deskAiAutoScene: data.deskAiAutoScene ?? data.deskAi?.autoScene ?? app.state.deskAiAutoScene,
+    deskAi: data.deskAi || app.state.deskAi,
   };
 }
 
@@ -690,6 +760,40 @@ function applyLocalControlPatch(patch) {
   if (patch.transitionDurationMs !== undefined) s.transitionDurationMs = Number(patch.transitionDurationMs);
   if (patch.gammaCorrection !== undefined) s.gammaCorrection = Boolean(patch.gammaCorrection);
   if (patch.smartScenes !== undefined) s.smartScenes = Boolean(patch.smartScenes);
+  if (patch.deskAiEnabled !== undefined) {
+    s.deskAiEnabled = Boolean(patch.deskAiEnabled);
+    s.deskAi.enabled = s.deskAiEnabled;
+  }
+  if (patch.deskAiAutoScene !== undefined) {
+    s.deskAiAutoScene = Boolean(patch.deskAiAutoScene);
+    s.deskAi.autoScene = s.deskAiAutoScene;
+  }
+  if (patch.deskAiCalibration !== undefined) {
+    const label = Number(patch.deskAiCalibration);
+    const samples = [...(s.deskAi.samples || [0, 0, 0, 0])];
+    samples[label - 1] = (samples[label - 1] || 0) + 1;
+    s.deskAi.samples = samples;
+    s.deskAi.lastCalibrationLabel = DESK_STATES[label];
+  }
+  if (patch.deskAiResetProfile) {
+    s.deskAi.samples = [0, 0, 0, 0];
+    s.deskAi.lastCalibrationLabel = "Unknown";
+  }
+  if (patch.deskAiEvaluationLabel !== undefined) {
+    const actual = Number(patch.deskAiEvaluationLabel) - 1;
+    const evaluation = s.deskAi.evaluation || { total: 0, personalizedCorrect: 0, baselineCorrect: 0, samples: [0, 0, 0, 0], confusion: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
+    const predicted = Math.max(0, Number(s.deskAi.state || 1) - 1);
+    const baseline = Math.max(0, Number(s.deskAi.baselineState || 1) - 1);
+    evaluation.total += 1;
+    evaluation.samples[actual] += 1;
+    evaluation.confusion[actual][predicted] += 1;
+    if (actual === predicted) evaluation.personalizedCorrect += 1;
+    if (actual === baseline) evaluation.baselineCorrect += 1;
+    s.deskAi.evaluation = evaluation;
+  }
+  if (patch.deskAiResetEvaluation) {
+    s.deskAi.evaluation = { total: 0, personalizedCorrect: 0, baselineCorrect: 0, samples: [0, 0, 0, 0], confusion: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
+  }
   if (patch.quietStartHour !== undefined) s.quietStartHour = clamp(Number(patch.quietStartHour), 0, 23);
   if (patch.quietEndHour !== undefined) s.quietEndHour = clamp(Number(patch.quietEndHour), 0, 23);
   if (patch.nightBrightnessCap !== undefined) s.nightBrightnessCap = clamp(Number(patch.nightBrightnessCap), 1, 96);
@@ -1429,6 +1533,62 @@ function renderStateText() {
   byId("statVbus").textContent = `${formatNumber(s.vbus, 2)} V`;
   byId("statWeather").textContent = `${formatNumber(s.weather?.temperature, 1)} C`;
   byId("statAudio").textContent = formatNumber(s.rms, 2);
+  const ai = s.deskAi || {};
+  const aiState = DESK_STATES[ai.state] || ai.label || "Unknown";
+  const aiConfidence = Math.round(clamp(Number(ai.confidence || 0), 0, 1) * 100);
+  byId("homeAiLabel").textContent = aiState;
+  byId("homeAiConfidence").textContent = `${aiConfidence}%`;
+  byId("homeAiReason").textContent = aiExplanation(aiState, ai.features || []);
+  byId("aiLabel").textContent = aiState;
+  byId("aiConfidence").textContent = `${aiConfidence}%`;
+  byId("aiDecision").textContent = aiExplanation(aiState, ai.features || []);
+  const aiFeatures = ai.features || [];
+  renderAiFeature("Audio", aiFeatures[0]);
+  renderAiFeature("Bass", aiFeatures[1]);
+  renderAiFeature("Motion", aiFeatures[2]);
+  renderAiFeature("Light", aiFeatures[3]);
+  renderAiFeature("Engagement", aiFeatures[4]);
+  byId("aiInference").textContent = `${ai.inferenceMicros ?? "--"} us / ${ai.inferenceCount ?? 0} local inferences`;
+  byId("aiSamples").textContent = `Samples F:${ai.samples?.[0] ?? 0} M:${ai.samples?.[1] ?? 0} R:${ai.samples?.[2] ?? 0} A:${ai.samples?.[3] ?? 0}`;
+  const profileCoverage = Number(ai.profileCoverage || 0);
+  const profileReady = Boolean(ai.profileReady);
+  const minSamples = Number(ai.minSamplesPerClass || 4);
+  const recommendedSamples = Number(ai.recommendedSamplesPerClass || 8);
+  byId("aiProfileStatus").textContent = profileReady ? "Ready for blind test" : "Calibration needed";
+  byId("aiProfileCoverage").textContent = `${profileCoverage} / 4`;
+  byId("aiProfileQuality").textContent = `${Math.round(Number(ai.profileQuality || 0))}%`;
+  byId("aiProfileSeparation").textContent = Number(ai.centroidSeparation || 0).toFixed(2);
+  byId("aiProfileHint").textContent = profileReady
+    ? `Profile passes the coverage and separation gate. Keep calibration frozen, then collect independent blind-test labels for the comparison.`
+    : `Collect at least ${minSamples} samples for each state. ${recommendedSamples} per state is recommended for a more stable personal profile.`;
+  const evaluation = ai.evaluation || {};
+  const evaluationTotal = Number(evaluation.total || 0);
+  byId("aiPersonalizedAccuracy").textContent = evaluationTotal
+    ? `${Math.round((Number(evaluation.personalizedCorrect || 0) / evaluationTotal) * 100)}%`
+    : "--";
+  byId("aiBaselineAccuracy").textContent = evaluationTotal
+    ? `${Math.round((Number(evaluation.baselineCorrect || 0) / evaluationTotal) * 100)}%`
+    : "--";
+  byId("aiEvaluationTotal").textContent = String(evaluationTotal);
+  byId("aiConfusionHint").textContent = evaluationTotal
+    ? `Confusion matrix: rows are actual states; columns are device predictions. F:${evaluation.samples?.[0] ?? 0} M:${evaluation.samples?.[1] ?? 0} R:${evaluation.samples?.[2] ?? 0} A:${evaluation.samples?.[3] ?? 0}.`
+    : "No validation samples yet. Collect each class several times for a fair comparison.";
+  const recallLabels = ["Focus", "Meeting", "Rest", "Away"];
+  const recalls = recallLabels.map((label, index) => {
+    const total = Number(evaluation.samples?.[index] || 0);
+    const correct = Number(evaluation.confusion?.[index]?.[index] || 0);
+    return total ? `${label} ${Math.round((correct / total) * 100)}%` : `${label} --`;
+  });
+  const improvement = evaluationTotal
+    ? Math.round(((Number(evaluation.personalizedCorrect || 0) - Number(evaluation.baselineCorrect || 0)) / evaluationTotal) * 100)
+    : 0;
+  byId("aiRecallHint").textContent = evaluationTotal
+    ? `Blind-test recall: ${recalls.join(" / ")}. Personalized model ${improvement >= 0 ? "+" : ""}${improvement} percentage points versus the default baseline.`
+    : "Per-state recall will appear after the first blind validation samples.";
+  byId("aiOfflineProof").textContent = ai.lastInferenceOffline
+    ? `Offline inference active: ${ai.offlineInferenceCount ?? 0}`
+    : `Offline inference count: ${ai.offlineInferenceCount ?? 0}`;
+  renderAiTimeline(ai.timeline || [], s.uptimeMs || 0);
   byId("timerDisplay").textContent = formatTimerText();
   byId("weatherTemp").textContent = `${formatNumber(s.weather?.temperature, 1)} C`;
   byId("weatherMeta").textContent = `${s.weather?.city || s.weatherCity} / ${s.weather?.humidity ?? "--"}% / wind ${formatNumber(s.weather?.windSpeed, 1)}`;
@@ -1463,6 +1623,8 @@ function renderControls() {
     `实际 ${s.effectiveBrightness ?? "--"} / 供电上限 ${s.brightnessCap ?? "--"}，拖动后自动切换手动`;
   setChecked("autoBrightness", s.autoBrightness);
   setChecked("smartScenes", s.smartScenes);
+  setChecked("deskAiEnabled", s.deskAiEnabled);
+  setChecked("deskAiAutoScene", s.deskAiAutoScene);
   setChecked("gammaCorrection", s.gammaCorrection);
   setChecked("smoothTransitions", s.smoothTransitions);
   setValue("transitionStyle", s.transitionStyle);
@@ -1548,6 +1710,47 @@ function formatTimerText() {
 function formatNumber(value, digits = 1) {
   if (value === undefined || value === null || Number.isNaN(Number(value))) return "--";
   return Number(value).toFixed(digits);
+}
+
+function renderAiFeature(name, value) {
+  const normalized = clamp(Number(value || 0), 0, 1);
+  const bar = byId(`aiFeature${name}`);
+  const label = byId(`aiFeature${name}Value`);
+  if (bar) bar.style.transform = `scaleX(${Math.max(0.03, normalized)})`;
+  if (label) label.textContent = `${Math.round(normalized * 100)}%`;
+}
+
+function aiExplanation(state, features) {
+  const audio = Math.round(clamp(Number(features[0] || 0), 0, 1) * 100);
+  const motion = Math.round(clamp(Number(features[2] || 0), 0, 1) * 100);
+  const light = Math.round(clamp(Number(features[3] || 0), 0, 1) * 100);
+  const explanations = {
+    Focus: `Low audio ${audio}% and motion ${motion}% match your calibrated focus profile.`,
+    Meeting: `Audio ${audio}% with active engagement matches your meeting profile.`,
+    Rest: `Low activity with ambient light ${light}% matches your rest profile.`,
+    Away: "Sustained low audio and motion indicate the desk is unattended.",
+  };
+  return explanations[state] || "Collecting local microphone, motion, and light features for the first decision.";
+}
+
+function renderAiTimeline(timeline, uptimeMs) {
+  const root = byId("aiTimeline");
+  if (!root) return;
+  root.innerHTML = "";
+  if (!timeline.length) {
+    root.textContent = "Waiting for local inference history.";
+    return;
+  }
+  const recent = timeline.slice(-30);
+  recent.forEach((entry) => {
+    const [timestampMs, state, confidence, offline] = entry;
+    const cell = document.createElement("span");
+    cell.className = `timeline-cell state-${state}${offline ? " offline" : ""}`;
+    const ageSec = Math.max(0, Math.round((uptimeMs - Number(timestampMs || 0)) / 1000));
+    cell.title = `${DESK_STATES[state] || "Unknown"} / ${confidence}% / ${offline ? "offline" : "connected"} / ${ageSec}s ago`;
+    cell.textContent = String(state || 0);
+    root.appendChild(cell);
+  });
 }
 
 function formatDuration(ms) {

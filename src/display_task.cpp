@@ -1287,6 +1287,36 @@ void renderSelectedMode(const RenderState &state, DisplayMode mode) {
   }
 }
 
+void renderDeskAiIndicator(const RenderState &state) {
+  if (!state.control.deskAiEnabled || state.deskAi.state == DeskState::Unknown) {
+    return;
+  }
+
+  CRGB color(26, 26, 26);
+  switch (state.deskAi.state) {
+    case DeskState::Focus:
+      color = CRGB(30, 180, 78);
+      break;
+    case DeskState::Meeting:
+      color = CRGB(140, 80, 210);
+      break;
+    case DeskState::Rest:
+      color = CRGB(230, 138, 30);
+      break;
+    case DeskState::Away:
+      color = CRGB(45, 118, 210);
+      break;
+    case DeskState::Unknown:
+    default:
+      break;
+  }
+  color.nscale8_video(static_cast<uint8_t>(70 + state.deskAi.confidence * 185.0f));
+  leds[xy(AppConfig::MatrixWidth - 1, 0)] = color;
+  if (state.deskAi.confidence >= 0.58f) {
+    leds[xy(AppConfig::MatrixWidth - 2, 0)] = color;
+  }
+}
+
 void renderNotificationOverlay(const NotificationState &notifications) {
   if (!notifications.activeVisible || notifications.active.text[0] == '\0') {
     return;
@@ -1399,7 +1429,7 @@ void applyColorPipeline(const RenderState &state) {
 void renderFrame(const RenderState &state) {
   applyBrightnessAndPower(state);
 
-  const DisplayMode effectiveMode = state.control.smartScenes
+  const DisplayMode effectiveMode = (state.control.smartScenes || state.control.deskAiAutoScene)
                                         ? state.context.effectiveMode
                                         : state.control.mode;
   const uint32_t key = renderVariantKey(state, effectiveMode);
@@ -1411,6 +1441,7 @@ void renderFrame(const RenderState &state) {
   }
 
   renderSelectedMode(state, effectiveMode);
+  renderDeskAiIndicator(state);
   renderNotificationOverlay(state.notifications);
   composeTransition(state.control, millis());
   applyColorPipeline(state);

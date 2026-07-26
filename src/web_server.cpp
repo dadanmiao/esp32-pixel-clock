@@ -15,6 +15,7 @@
 
 #include "app_config.h"
 #include "app_state.h"
+#include "desk_ai.h"
 #include "game_logic.h"
 #include "notification_manager.h"
 #include "settings_storage.h"
@@ -567,6 +568,8 @@ String buildStateJson() {
   doc["transitionDurationMs"] = state.control.transitionDurationMs;
   doc["gammaCorrection"] = state.control.gammaCorrection;
   doc["smartScenes"] = state.control.smartScenes;
+  doc["deskAiEnabled"] = state.control.deskAiEnabled;
+  doc["deskAiAutoScene"] = state.control.deskAiAutoScene;
   doc["quietStartHour"] = state.control.quietStartHour;
   doc["quietEndHour"] = state.control.quietEndHour;
   doc["nightBrightnessCap"] = state.control.nightBrightnessCap;
@@ -778,6 +781,70 @@ String buildStateJson() {
   game["ballY"] = state.game.ball.y;
   game["breakoutPaddleX"] = state.game.breakoutPaddleX;
   game["breakoutBricks"] = state.game.breakoutBricks;
+
+  JsonObject deskAi = doc["deskAi"].to<JsonObject>();
+  deskAi["enabled"] = state.control.deskAiEnabled;
+  deskAi["autoScene"] = state.control.deskAiAutoScene;
+  deskAi["state"] = static_cast<uint8_t>(state.deskAi.state);
+  deskAi["label"] = deskStateToString(state.deskAi.state);
+  deskAi["confidence"] = state.deskAi.confidence;
+  deskAi["baselineState"] = static_cast<uint8_t>(state.deskAi.baselineState);
+  deskAi["baselineLabel"] = deskStateToString(state.deskAi.baselineState);
+  deskAi["baselineConfidence"] = state.deskAi.baselineConfidence;
+  deskAi["inferenceCount"] = state.deskAi.inferenceCount;
+  deskAi["lastInferenceMs"] = state.deskAi.lastInferenceMs;
+  deskAi["inferenceMicros"] = state.deskAi.inferenceMicros;
+  deskAi["lastCalibrationMs"] = state.deskAi.lastCalibrationMs;
+  deskAi["lastCalibrationLabel"] = deskStateToString(state.deskAi.lastCalibrationLabel);
+  deskAi["lastInferenceOffline"] = state.deskAi.lastInferenceOffline;
+  deskAi["offlineInferenceCount"] = state.deskAi.offlineInferenceCount;
+  deskAi["lastOfflineInferenceMs"] = state.deskAi.lastOfflineInferenceMs;
+  deskAi["profileCoverage"] = state.deskAi.profileCoverage;
+  deskAi["profileQuality"] = state.deskAi.profileQuality;
+  deskAi["profileReady"] = state.deskAi.profileReady;
+  deskAi["centroidSeparation"] = state.deskAi.centroidSeparation;
+  deskAi["minSamplesPerClass"] = AppConfig::DeskAiMinCalibrationSamplesPerClass;
+  deskAi["recommendedSamplesPerClass"] = AppConfig::DeskAiRecommendedCalibrationSamplesPerClass;
+  JsonArray features = deskAi["features"].to<JsonArray>();
+  for (float feature : state.deskAi.features) {
+    features.add(feature);
+  }
+  JsonArray scores = deskAi["scores"].to<JsonArray>();
+  for (float score : state.deskAi.classScores) {
+    scores.add(score);
+  }
+  JsonArray samples = deskAi["samples"].to<JsonArray>();
+  for (uint16_t sample : state.control.deskAiSampleCounts) {
+    samples.add(sample);
+  }
+  JsonObject evaluation = deskAi["evaluation"].to<JsonObject>();
+  evaluation["total"] = state.deskAi.evaluationTotal;
+  evaluation["personalizedCorrect"] = state.deskAi.personalizedCorrect;
+  evaluation["baselineCorrect"] = state.deskAi.baselineCorrect;
+  evaluation["lastEvaluationMs"] = state.deskAi.lastEvaluationMs;
+  JsonArray evaluationSamples = evaluation["samples"].to<JsonArray>();
+  for (uint16_t sample : state.deskAi.evaluationSamples) {
+    evaluationSamples.add(sample);
+  }
+  JsonArray confusion = evaluation["confusion"].to<JsonArray>();
+  for (size_t actual = 0; actual < DeskAiClassCount; ++actual) {
+    JsonArray row = confusion.add<JsonArray>();
+    for (size_t predicted = 0; predicted < DeskAiClassCount; ++predicted) {
+      row.add(state.deskAi.confusion[actual][predicted]);
+    }
+  }
+  JsonArray timeline = deskAi["timeline"].to<JsonArray>();
+  const uint8_t firstTimeline = state.deskAi.timelineCount == DeskAiTimelineCapacity
+                                    ? state.deskAi.timelineNext
+                                    : 0;
+  for (uint8_t entryIndex = 0; entryIndex < state.deskAi.timelineCount; ++entryIndex) {
+    const auto &entry = state.deskAi.timeline[(firstTimeline + entryIndex) % DeskAiTimelineCapacity];
+    JsonArray point = timeline.add<JsonArray>();
+    point.add(entry.timestampMs);
+    point.add(static_cast<uint8_t>(entry.state));
+    point.add(entry.confidence);
+    point.add(entry.offline);
+  }
 
   JsonArray spectrum = doc["spectrum"].to<JsonArray>();
   for (float bin : state.audio.spectrum) {
@@ -1018,6 +1085,35 @@ void handleControlBody(AsyncWebServerRequest *request, uint8_t *data, size_t len
     state.control.smartScenes = doc["smartScenes"];
     settingsChanged = true;
   }
+  if (doc["deskAiEnabled"].is<bool>()) {
+    state.control.deskAiEnabled = doc["deskAiEnabled"];
+    settingsChanged = true;
+  }
+  if (doc["deskAiAutoScene"].is<bool>()) {
+    state.control.deskAiAutoScene = doc["deskAiAutoScene"];
+    settingsChanged = true;
+  }
+  if (doc["deskAiCalibration"].is<int>()) {
+    const int label = constrain(doc["deskAiCalibration"].as<int>(), 1, 4);
+    if (calibrateDeskAiProfile(state.control, state.deskAi, static_cast<DeskState>(label))) {
+      refreshDeskAiProfileMetrics(state.control, state.deskAi);
+      settingsChanged = true;
+    }
+  }
+  if (doc["deskAiResetProfile"].is<bool>() && doc["deskAiResetProfile"].as<bool>()) {
+    resetDeskAiProfile(state.control);
+    state.deskAi.lastCalibrationLabel = DeskState::Unknown;
+    state.deskAi.lastCalibrationMs = millis();
+    refreshDeskAiProfileMetrics(state.control, state.deskAi);
+    settingsChanged = true;
+  }
+  if (doc["deskAiEvaluationLabel"].is<int>()) {
+    const int label = constrain(doc["deskAiEvaluationLabel"].as<int>(), 1, 4);
+    recordDeskAiEvaluation(state.deskAi, static_cast<DeskState>(label));
+  }
+  if (doc["deskAiResetEvaluation"].is<bool>() && doc["deskAiResetEvaluation"].as<bool>()) {
+    resetDeskAiEvaluation(state.deskAi);
+  }
   if (doc["quietStartHour"].is<int>()) {
     state.control.quietStartHour = static_cast<uint8_t>(
         constrain(doc["quietStartHour"].as<int>(), 0, 23));
@@ -1139,6 +1235,7 @@ void handleControlBody(AsyncWebServerRequest *request, uint8_t *data, size_t len
   }
 
   updateControlState(state.control);
+  updateDeskAiState(state.deskAi);
   updateGameState(state.game);
   pushRenderSnapshot(0);
   if (settingsChanged) {

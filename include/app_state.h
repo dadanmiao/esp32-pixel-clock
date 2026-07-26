@@ -12,6 +12,9 @@
 #include "app_config.h"
 
 constexpr size_t WeatherCityMaxLen = 32;
+constexpr size_t DeskAiFeatureCount = 5;
+constexpr size_t DeskAiClassCount = 4;
+constexpr size_t DeskAiTimelineCapacity = 60;
 
 enum class DisplayMode : uint8_t {
   Clock = 0,
@@ -43,6 +46,18 @@ enum class SceneReason : uint8_t {
   AudioActive = 2,
   MotionActive = 3,
   TimerActive = 4,
+  DeskAiFocus = 5,
+  DeskAiMeeting = 6,
+  DeskAiRest = 7,
+  DeskAiAway = 8,
+};
+
+enum class DeskState : uint8_t {
+  Unknown = 0,
+  Focus = 1,
+  Meeting = 2,
+  Rest = 3,
+  Away = 4,
 };
 
 enum class TimerMode : uint8_t {
@@ -148,6 +163,10 @@ struct ControlState {
   uint16_t transitionDurationMs = AppConfig::DefaultTransitionDurationMs;
   bool gammaCorrection = true;
   bool smartScenes = false;
+  bool deskAiEnabled = true;
+  bool deskAiAutoScene = false;
+  float deskAiCentroids[DeskAiClassCount][DeskAiFeatureCount] = {};
+  uint16_t deskAiSampleCounts[DeskAiClassCount] = {};
   uint8_t quietStartHour = AppConfig::DefaultQuietStartHour;
   uint8_t quietEndHour = AppConfig::DefaultQuietEndHour;
   uint8_t nightBrightnessCap = AppConfig::DefaultNightBrightnessCap;
@@ -247,6 +266,43 @@ struct ContextState {
   uint32_t lastEvaluationMs = 0;
 };
 
+struct DeskAiState {
+  DeskState state = DeskState::Unknown;
+  DeskState baselineState = DeskState::Unknown;
+  DeskState lastCalibrationLabel = DeskState::Unknown;
+  float confidence = 0.0f;
+  float baselineConfidence = 0.0f;
+  float features[DeskAiFeatureCount] = {};
+  float classScores[DeskAiClassCount] = {};
+  uint32_t inferenceCount = 0;
+  uint32_t lastInferenceMs = 0;
+  uint32_t stableSinceMs = 0;
+  uint32_t lastCalibrationMs = 0;
+  uint32_t lastEvaluationMs = 0;
+  uint32_t offlineInferenceCount = 0;
+  uint32_t lastOfflineInferenceMs = 0;
+  uint16_t inferenceMicros = 0;
+  uint16_t evaluationTotal = 0;
+  uint16_t personalizedCorrect = 0;
+  uint16_t baselineCorrect = 0;
+  uint16_t evaluationSamples[DeskAiClassCount] = {};
+  uint16_t confusion[DeskAiClassCount][DeskAiClassCount] = {};
+  uint8_t profileCoverage = 0;
+  uint8_t profileQuality = 0;
+  bool profileReady = false;
+  float centroidSeparation = 0.0f;
+  struct TimelineEntry {
+    uint32_t timestampMs = 0;
+    DeskState state = DeskState::Unknown;
+    uint8_t confidence = 0;
+    bool offline = false;
+  } timeline[DeskAiTimelineCapacity] = {};
+  uint8_t timelineCount = 0;
+  uint8_t timelineNext = 0;
+  uint32_t lastTimelineEntryMs = 0;
+  bool lastInferenceOffline = false;
+};
+
 struct NotificationItem {
   char text[AppConfig::NotificationTextMaxLen] = "";
   CRGB color = CRGB(0xFF, 0xB8, 0x6B);
@@ -294,6 +350,7 @@ struct RenderState {
   WeatherState weather;
   GameState game;
   ContextState context;
+  DeskAiState deskAi;
   NotificationState notifications;
   time_t unixTime = 0;
 };
@@ -324,6 +381,7 @@ void updateWeatherState(const WeatherState &weather);
 GameState copyGameState();
 void updateGameState(const GameState &game);
 void updateContextState(const ContextState &context);
+void updateDeskAiState(const DeskAiState &deskAi);
 NotificationState copyNotificationState();
 void updateNotificationState(const NotificationState &notifications);
 void updateScreenSnapshot(const CRGB *leds, size_t count);

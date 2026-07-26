@@ -7,7 +7,7 @@
 #include <Arduino.h>
 
 namespace AppConfig {
-constexpr const char *FirmwareVersion = "2.2.0";
+constexpr const char *FirmwareVersion = "2.4.0";
 constexpr uint16_t MatrixWidth = 32;
 constexpr uint16_t MatrixHeight = 8;
 constexpr uint16_t LedCount = MatrixWidth * MatrixHeight;
@@ -15,6 +15,12 @@ constexpr uint16_t LedCount = MatrixWidth * MatrixHeight;
 constexpr uint32_t RenderFps = 60;
 constexpr uint32_t SensorPollMs = 50;
 constexpr uint32_t PowerPollMs = 500;
+constexpr uint32_t DeskAiInferenceIntervalMs = 1000;
+constexpr uint32_t DeskAiAwayTimeoutMs = 90UL * 1000UL;
+constexpr uint32_t DeskAiTimelineIntervalMs = 30UL * 1000UL;
+constexpr uint8_t DeskAiMinCalibrationSamplesPerClass = 4;
+constexpr uint8_t DeskAiRecommendedCalibrationSamplesPerClass = 8;
+constexpr float DeskAiMinCentroidSeparation = 0.12f;
 
 constexpr uint32_t AudioSampleRate = 16000;
 constexpr size_t AudioFftSize = 256;

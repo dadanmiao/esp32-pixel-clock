@@ -76,6 +76,15 @@
           </article>
         </section>
 
+        <section class="ai-summary" aria-label="Edge AI desk state">
+          <div>
+            <span class="section-kicker">On-device desk AI</span>
+            <h2 id="homeAiLabel">Analyzing</h2>
+            <p id="homeAiReason">Local sensor fusion is preparing a desk-state explanation.</p>
+          </div>
+          <strong id="homeAiConfidence">--%</strong>
+        </section>
+
         <section>
           <div class="section-head compact-head">
             <div>
@@ -110,6 +119,7 @@
           <button class="segment" data-panel="timer">计时</button>
           <button class="segment" data-panel="weather">天气</button>
           <button class="segment" data-panel="game">游戏</button>
+          <button class="segment" data-panel="ai">Desk AI</button>
         </div>
 
         <section class="control-panel active" id="panel-display">
@@ -427,6 +437,90 @@
             <button data-game-action="toggle">Toggle</button>
             <button data-game-action="reset">Reset</button>
           </div>
+        </section>
+
+        <section class="control-panel" id="panel-ai">
+          <div class="ai-panel-heading">
+            <div>
+              <span class="section-kicker">Explainable local model</span>
+              <h3 id="aiLabel">Analyzing</h3>
+            </div>
+            <span id="aiConfidence" class="mono-pill">--%</span>
+          </div>
+          <p id="aiDecision" class="ai-decision">The classifier runs on the ESP32-S3 and does not upload microphone or motion data.</p>
+          <div class="two-switches">
+            <label class="switch">
+              <input id="deskAiEnabled" type="checkbox" checked>
+              <span></span>
+              <b>Enable local classification</b>
+            </label>
+            <label class="switch">
+              <input id="deskAiAutoScene" type="checkbox">
+              <span></span>
+              <b>Let AI choose ambient display</b>
+            </label>
+          </div>
+          <div class="ai-feature-list">
+            <div><span>Audio activity</span><i id="aiFeatureAudio"></i><b id="aiFeatureAudioValue">--</b></div>
+            <div><span>Low frequency</span><i id="aiFeatureBass"></i><b id="aiFeatureBassValue">--</b></div>
+            <div><span>Motion change</span><i id="aiFeatureMotion"></i><b id="aiFeatureMotionValue">--</b></div>
+            <div><span>Ambient light</span><i id="aiFeatureLight"></i><b id="aiFeatureLightValue">--</b></div>
+            <div><span>Engagement</span><i id="aiFeatureEngagement"></i><b id="aiFeatureEngagementValue">--</b></div>
+          </div>
+          <div class="ai-meta">
+            <span id="aiInference">--</span>
+            <span id="aiSamples">No samples</span>
+          </div>
+          <div class="training-heading">
+            <div>
+              <h3>Training quality gate</h3>
+              <p>Calibrate each state before validation. Ground-truth validation never updates the local model.</p>
+            </div>
+            <span id="aiProfileStatus" class="mono-pill">Collecting</span>
+          </div>
+          <div class="evaluation-metrics training-metrics">
+            <div><span>Class coverage</span><strong id="aiProfileCoverage">0 / 4</strong></div>
+            <div><span>Profile quality</span><strong id="aiProfileQuality">0%</strong></div>
+            <div><span>Prototype separation</span><strong id="aiProfileSeparation">--</strong></div>
+          </div>
+          <p id="aiProfileHint" class="ai-decision">Collect at least four calibration samples for every state before starting a blind validation run.</p>
+          <div class="calibration-heading">
+            <h3>Personal calibration</h3>
+            <p>Stay in the target state, then tap its label. Repeat 2-3 times for each state.</p>
+          </div>
+          <div class="calibration-grid">
+            <button data-ai-label="1">I am focusing</button>
+            <button data-ai-label="2">I am in a meeting</button>
+            <button data-ai-label="3">I am resting</button>
+            <button data-ai-label="4">Desk is empty</button>
+          </div>
+          <button id="deskAiResetProfile" class="soft-button ai-reset">Reset calibration profile</button>
+          <div class="evaluation-heading">
+            <h3>Validation evidence</h3>
+            <p>Choose the actual desk state. The device records its prediction against this ground-truth label.</p>
+          </div>
+          <div class="calibration-grid">
+            <button data-ai-evaluation="1">Mark actual Focus</button>
+            <button data-ai-evaluation="2">Mark actual Meeting</button>
+            <button data-ai-evaluation="3">Mark actual Rest</button>
+            <button data-ai-evaluation="4">Mark actual Away</button>
+          </div>
+          <div class="evaluation-metrics">
+            <div><span>Personalized</span><strong id="aiPersonalizedAccuracy">--</strong></div>
+            <div><span>Default baseline</span><strong id="aiBaselineAccuracy">--</strong></div>
+            <div><span>Ground-truth samples</span><strong id="aiEvaluationTotal">0</strong></div>
+          </div>
+          <p id="aiConfusionHint" class="ai-decision">No validation samples yet. Collect each class several times for a fair comparison.</p>
+          <p id="aiRecallHint" class="ai-decision">Per-state recall will appear after the first blind validation samples.</p>
+          <button id="deskAiResetEvaluation" class="soft-button ai-reset">Reset validation run</button>
+          <div class="timeline-heading">
+            <div>
+              <h3>State timeline</h3>
+              <p>One point every 30 seconds, plus every state change.</p>
+            </div>
+            <span id="aiOfflineProof" class="mono-pill">Offline proof: --</span>
+          </div>
+          <div id="aiTimeline" class="ai-timeline" aria-label="Desk state timeline"></div>
         </section>
       </section>
 

@@ -8,6 +8,7 @@
 #include "app_state.h"
 #include "audio_task.h"
 #include "display_task.h"
+#include "desk_ai.h"
 #include "game_logic.h"
 #include "notification_manager.h"
 #include "pinmap.h"
@@ -58,6 +59,7 @@ void initInitialState() {
   state.control.gameType = GameType::Snake;
   state.control.gameUseMpuControl = false;
   state.control.gameSpeedMs = 160;
+  initializeDeskAiProfile(state.control);
   strncpy(state.weather.city, state.control.weatherCity, WeatherCityMaxLen - 1);
   state.weather.city[WeatherCityMaxLen - 1] = '\0';
   state.weather.latitude = state.control.weatherLatitude;
@@ -66,6 +68,7 @@ void initInitialState() {
   state.power.maxMilliamps = 450;
   state.power.brightnessCap = AppConfig::BrightnessCap5v;
   loadSettingsFromNvs(state.control);
+  refreshDeskAiProfileMetrics(state.control, state.deskAi);
   state.context.effectiveMode = state.control.mode;
   state.context.reason = SceneReason::Manual;
   gameReset(state.game, state.control);
@@ -160,6 +163,7 @@ void loop() {
     }
   }
   serviceSceneEngine();
+  serviceDeskAi();
   serviceNotifications();
   serviceWiFiManager();
   serviceWebServer();

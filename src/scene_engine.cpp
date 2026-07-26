@@ -103,7 +103,33 @@ void serviceSceneEngine() {
     }
   }
 
-  if (state.control.smartScenes &&
+  if (state.control.deskAiEnabled && state.control.deskAiAutoScene && ambientMode &&
+      state.control.timerState != TimerRunState::Running &&
+      state.control.timerState != TimerRunState::Finished) {
+    switch (state.deskAi.state) {
+      case DeskState::Focus:
+        next.effectiveMode = DisplayMode::Clock;
+        next.reason = SceneReason::DeskAiFocus;
+        break;
+      case DeskState::Meeting:
+        next.effectiveMode = DisplayMode::Clock;
+        next.reason = SceneReason::DeskAiMeeting;
+        break;
+      case DeskState::Rest:
+        next.effectiveMode = DisplayMode::Fluid;
+        next.reason = SceneReason::DeskAiRest;
+        break;
+      case DeskState::Away:
+        next.effectiveMode = DisplayMode::Clock;
+        next.reason = SceneReason::DeskAiAway;
+        break;
+      case DeskState::Unknown:
+      default:
+        break;
+    }
+  }
+
+  if ((state.control.smartScenes || state.control.deskAiAutoScene) &&
       next.effectiveMode != state.context.effectiveMode) {
     next.automaticSwitchCount = state.context.automaticSwitchCount + 1;
   }
@@ -115,4 +141,3 @@ void serviceSceneEngine() {
     pushRenderSnapshot(0);
   }
 }
-

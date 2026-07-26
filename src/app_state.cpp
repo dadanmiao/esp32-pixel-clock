@@ -117,6 +117,16 @@ void updateContextState(const ContextState &context) {
   }
 }
 
+void updateDeskAiState(const DeskAiState &deskAi) {
+  if (!gState.mutex) {
+    return;
+  }
+  if (xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    gState.snapshot.deskAi = deskAi;
+    xSemaphoreGive(gState.mutex);
+  }
+}
+
 NotificationState copyNotificationState() {
   NotificationState copy;
   if (!gState.mutex) {

@@ -11,7 +11,7 @@
 
 namespace {
 constexpr const char *NvsNamespace = "pxclock";
-constexpr uint32_t SettingsVersion = 2;
+constexpr uint32_t SettingsVersion = 3;
 constexpr uint32_t SaveDelayMs = 1500;
 
 portMUX_TYPE saveMux = portMUX_INITIALIZER_UNLOCKED;
@@ -144,7 +144,7 @@ void loadSettingsFromNvs(ControlState &control) {
   }
 
   const uint32_t version = prefs.getUInt("ver", 0);
-  if (version != 1 && version != SettingsVersion) {
+  if (version != 1 && version != 2 && version != SettingsVersion) {
     prefs.end();
     Serial.println("[NVS] no valid settings, using defaults");
     return;
@@ -192,6 +192,14 @@ void loadSettingsFromNvs(ControlState &control) {
       prefs.getUShort("transMs", control.transitionDurationMs), 120, 1200);
   control.gammaCorrection = prefs.getBool("gamma", control.gammaCorrection);
   control.smartScenes = prefs.getBool("scenes", control.smartScenes);
+  control.deskAiEnabled = prefs.getBool("aiOn", control.deskAiEnabled);
+  control.deskAiAutoScene = prefs.getBool("aiAuto", control.deskAiAutoScene);
+  if (prefs.getBytesLength("aiCtr") == sizeof(control.deskAiCentroids)) {
+    prefs.getBytes("aiCtr", control.deskAiCentroids, sizeof(control.deskAiCentroids));
+  }
+  if (prefs.getBytesLength("aiCnt") == sizeof(control.deskAiSampleCounts)) {
+    prefs.getBytes("aiCnt", control.deskAiSampleCounts, sizeof(control.deskAiSampleCounts));
+  }
   control.quietStartHour = clampU8(prefs.getUChar("quietFrom", control.quietStartHour), 0, 23);
   control.quietEndHour = clampU8(prefs.getUChar("quietTo", control.quietEndHour), 0, 23);
   control.nightBrightnessCap = clampU8(
@@ -260,6 +268,10 @@ void saveSettingsToNvs(const ControlState &control) {
   prefs.putUShort("transMs", clampU16(control.transitionDurationMs, 120, 1200));
   prefs.putBool("gamma", control.gammaCorrection);
   prefs.putBool("scenes", control.smartScenes);
+  prefs.putBool("aiOn", control.deskAiEnabled);
+  prefs.putBool("aiAuto", control.deskAiAutoScene);
+  prefs.putBytes("aiCtr", control.deskAiCentroids, sizeof(control.deskAiCentroids));
+  prefs.putBytes("aiCnt", control.deskAiSampleCounts, sizeof(control.deskAiSampleCounts));
   prefs.putUChar("quietFrom", clampU8(control.quietStartHour, 0, 23));
   prefs.putUChar("quietTo", clampU8(control.quietEndHour, 0, 23));
   prefs.putUChar("nightCap", clampU8(control.nightBrightnessCap, 1, 96));
