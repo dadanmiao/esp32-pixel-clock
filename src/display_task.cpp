@@ -699,18 +699,19 @@ void renderBreakout(const GameState &game, const CRGB &accent) {
       }
       color = gameRunColor(color, game.runState);
       const uint8_t x0 = col * BreakoutBrickWidth;
-      setGamePixel(x0, row, color);
-      setGamePixel(x0 + 1, row, color);
+      const uint8_t y = GameBoardH - 1 - row;
+      setGamePixel(x0, y, color);
+      setGamePixel(x0 + 1, y, color);
     }
   }
 
   const CRGB paddle = gameRunColor(accent, game.runState);
   for (uint8_t dx = 0; dx < BreakoutPaddleWidth; ++dx) {
-    setGamePixel(game.breakoutPaddleX + dx, GameBoardH - 1, paddle);
+    setGamePixel(game.breakoutPaddleX + dx, 0, paddle);
   }
   CRGB ball = accent;
   ball.nscale8_video(220);
-  setGamePixel(game.ball.x, game.ball.y, gameRunColor(ball, game.runState));
+  setGamePixel(game.ball.x, GameBoardH - 1 - game.ball.y, gameRunColor(ball, game.runState));
 }
 
 void renderGameOver(const GameState &game) {
