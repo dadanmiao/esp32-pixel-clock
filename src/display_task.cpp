@@ -687,6 +687,9 @@ void renderGravityBall(const GameState &game, const CRGB &accent) {
 void renderBreakout(const GameState &game, const CRGB &accent) {
   fill_solid(leds, AppConfig::LedCount, CRGB::Black);
 
+  // Breakout simulation uses y=0 for the brick side and y=GameBoardH-1 for
+  // the paddle side. setGamePixel() owns any board-orientation transform, so
+  // rendering must use the same coordinates as collision detection.
   for (uint8_t row = 0; row < BreakoutBrickRows; ++row) {
     for (uint8_t col = 0; col < BreakoutBrickCols; ++col) {
       const uint8_t brickIndex = row * BreakoutBrickCols + col;
@@ -699,19 +702,18 @@ void renderBreakout(const GameState &game, const CRGB &accent) {
       }
       color = gameRunColor(color, game.runState);
       const uint8_t x0 = col * BreakoutBrickWidth;
-      const uint8_t y = GameBoardH - 1 - row;
-      setGamePixel(x0, y, color);
-      setGamePixel(x0 + 1, y, color);
+      setGamePixel(x0, row, color);
+      setGamePixel(x0 + 1, row, color);
     }
   }
 
   const CRGB paddle = gameRunColor(accent, game.runState);
   for (uint8_t dx = 0; dx < BreakoutPaddleWidth; ++dx) {
-    setGamePixel(game.breakoutPaddleX + dx, 0, paddle);
+    setGamePixel(game.breakoutPaddleX + dx, GameBoardH - 1, paddle);
   }
   CRGB ball = accent;
   ball.nscale8_video(220);
-  setGamePixel(game.ball.x, GameBoardH - 1 - game.ball.y, gameRunColor(ball, game.runState));
+  setGamePixel(game.ball.x, game.ball.y, gameRunColor(ball, game.runState));
 }
 
 void renderGameOver(const GameState &game) {

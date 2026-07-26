@@ -399,14 +399,14 @@ void gameUpdate(GameState &game, const ControlState &control, const EnvironmentS
 
   game.stepIntervalMs = boundedGameSpeed(control.gameSpeedMs);
   if (game.runState == GameRunState::GameOver) {
-    if (gameMotionDetected(game, env)) {
+    if (control.gameUseMpuControl && gameMotionDetected(game, env)) {
       gameReset(game, control);
       gameStart(game);
     }
     return;
   }
   if (game.runState == GameRunState::Idle) {
-    if (gameMotionDetected(game, env)) {
+    if (control.gameUseMpuControl && gameMotionDetected(game, env)) {
       gameStart(game);
     } else {
       return;
