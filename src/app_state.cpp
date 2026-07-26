@@ -127,6 +127,16 @@ void updateDeskAiState(const DeskAiState &deskAi) {
   }
 }
 
+void updateCompetitionState(const CompetitionState &competition) {
+  if (!gState.mutex) {
+    return;
+  }
+  if (xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    gState.snapshot.competition = competition;
+    xSemaphoreGive(gState.mutex);
+  }
+}
+
 NotificationState copyNotificationState() {
   NotificationState copy;
   if (!gState.mutex) {

@@ -928,6 +928,46 @@ input[type="range"] {
   font-size: 19px;
 }
 
+.ai-feedback-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(217, 112, 49, 0.42);
+  border-radius: var(--radius);
+  background: #fff5eb;
+}
+
+.ai-feedback-panel[hidden] {
+  display: none;
+}
+
+.ai-feedback-panel h3,
+.ai-feedback-panel p {
+  margin: 6px 0;
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.health-grid span {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.health-grid span.ok {
+  color: var(--accent-strong);
+  border-color: rgba(24, 135, 105, 0.34);
+  background: #eaf8f2;
+}
+
 .timeline-heading {
   display: flex;
   align-items: end;

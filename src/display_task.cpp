@@ -48,8 +48,11 @@ constexpr bool FluidVisualFlipX = true;
 constexpr bool FluidVisualFlipY = true;
 constexpr bool UiFlipX = FluidVisualFlipX;
 constexpr bool UiFlipY = FluidVisualFlipY;
-constexpr bool GameFlipX = false;
-constexpr bool GameFlipY = false;
+// Games use the same visual orientation as the rest of the interface.  Game
+// simulation keeps y=0 at the brick/top side; this mapping turns that logical
+// top into the physical top of the tilted display.
+constexpr bool GameFlipX = UiFlipX;
+constexpr bool GameFlipY = UiFlipY;
 constexpr bool FluidGravityFlipX = FluidVisualFlipX;
 constexpr bool FluidGravityFlipY = FluidVisualFlipY;
 Particle particles[ParticleCount];
@@ -684,6 +687,56 @@ void renderGravityBall(const GameState &game, const CRGB &accent) {
   }
 }
 
+void renderReaction(const GameState &game, const CRGB &accent) {
+  fill_solid(leds, AppConfig::LedCount, CRGB::Black);
+
+  if (game.runState == GameRunState::Idle) {
+    // Amber means that Start is needed; green means "tap any direction now".
+    for (uint8_t x = 12; x < 20; ++x) {
+      setGamePixel(x, 3, CRGB(96, 62, 0));
+      setGamePixel(x, 4, CRGB(96, 62, 0));
+    }
+    return;
+  }
+
+  if (game.reactionReady) {
+    CRGB ready = accent;
+    ready.nscale8_video(220);
+    for (uint8_t x = 13; x < 19; ++x) {
+      for (uint8_t y = 2; y < 6; ++y) {
+        setGamePixel(x, y, ready);
+      }
+    }
+  } else {
+    const uint8_t pulse = static_cast<uint8_t>(72 + (millis() / 12) % 52);
+    for (uint8_t x = 14; x < 18; ++x) {
+      setGamePixel(x, 3, CRGB(pulse, pulse / 2, 0));
+      setGamePixel(x, 4, CRGB(pulse, pulse / 2, 0));
+    }
+  }
+
+  const uint8_t scoreWidth = static_cast<uint8_t>(constrain(static_cast<int>(game.score), 0, GameBoardW));
+  for (uint8_t x = 0; x < scoreWidth; ++x) {
+    addGamePixel(x, GameBoardH - 1, CRGB(28, 80, 28));
+  }
+}
+
+void renderPong(const GameState &game, const CRGB &accent) {
+  fill_solid(leds, AppConfig::LedCount, CRGB::Black);
+  CRGB paddle = gameRunColor(accent, game.runState);
+  for (uint8_t dx = 0; dx < BreakoutPaddleWidth; ++dx) {
+    setGamePixel(game.pongPaddleX + dx, GameBoardH - 1, paddle);
+  }
+  CRGB ball = accent;
+  ball.nscale8_video(235);
+  setGamePixel(game.ball.x, game.ball.y, gameRunColor(ball, game.runState));
+
+  const uint8_t scoreWidth = static_cast<uint8_t>(constrain(static_cast<int>(game.score), 0, GameBoardW));
+  for (uint8_t x = 0; x < scoreWidth; ++x) {
+    addGamePixel(x, 0, CRGB(44, 48, 96));
+  }
+}
+
 void renderBreakout(const GameState &game, const CRGB &accent) {
   fill_solid(leds, AppConfig::LedCount, CRGB::Black);
 
@@ -769,7 +822,11 @@ void renderGame(const RenderState &state) {
       renderSnake(game, state.control.preferredColor);
       break;
     case GameType::Reaction:
+      renderReaction(game, state.control.preferredColor);
+      break;
     case GameType::Pong:
+      renderPong(game, state.control.preferredColor);
+      break;
     default:
       renderUnsupportedGame(game, state.control.preferredColor);
       break;
@@ -1219,6 +1276,9 @@ void applyBrightnessAndPower(const RenderState &state) {
   if (state.control.smartScenes &&
       (state.context.quietHours || state.context.darkEnvironment)) {
     targetBrightness = min(targetBrightness, state.control.nightBrightnessCap);
+  }
+  if (state.control.energyAwareMode && state.deskAi.state == DeskState::Away) {
+    targetBrightness = min(targetBrightness, static_cast<uint8_t>(4));
   }
 
   if (currentBrightness < targetBrightness) {

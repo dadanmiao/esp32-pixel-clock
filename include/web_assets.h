@@ -367,6 +367,8 @@ const char IndexHtml[] PROGMEM = R"HTML(
               <select id="gameType">
                 <option value="0">Snake</option>
                 <option value="1">Gravity Ball</option>
+                <option value="2">Reaction</option>
+                <option value="3">Pong</option>
                 <option value="4">Breakout</option>
               </select>
             </div>
@@ -399,7 +401,7 @@ const char IndexHtml[] PROGMEM = R"HTML(
           <div class="kv"><span>State</span><b id="gameRunState">--</b></div>
           <div class="kv"><span>Score</span><b id="gameScore">--</b></div>
           <div class="kv"><span>High Score</span><b id="gameHighScore">--</b></div>
-          <div class="kv"><span>Snake / Bricks</span><b id="gameSnakeLen">--</b></div>
+          <div class="kv"><span>Length / Bricks</span><b id="gameSnakeLen">--</b></div>
         </div>
       </div>
     </section>
@@ -780,7 +782,7 @@ async function refresh() {
   setText("gameHighScore", state.game?.highScore ?? "--");
   const gameType = state.game?.type ?? state.gameType ?? 0;
   const bricks = Number(state.game?.breakoutBricks ?? 0) >>> 0;
-  setText("gameSnakeLen", gameType === 4 ? bricks.toString(2).replace(/0/g, "").length : (state.game?.snakeLen ?? "--"));
+  setText("gameSnakeLen", gameType === 4 ? bricks.toString(2).replace(/0/g, "").length : (gameType === 0 ? (state.game?.snakeLen ?? "--") : "--"));
   setValue("brightness", state.manualBrightness);
   setText("brightnessValue", state.manualBrightness);
   setChecked("autoBrightness", state.autoBrightness);

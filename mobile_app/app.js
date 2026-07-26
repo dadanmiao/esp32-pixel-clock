@@ -53,6 +53,10 @@ function createMockState() {
     smartScenes: false,
     deskAiEnabled: true,
     deskAiAutoScene: false,
+    deskAiActiveLearning: true,
+    deskAiFeedbackThreshold: 48,
+    competitionDemoMode: false,
+    energyAwareMode: true,
     quietStartHour: 23,
     quietEndHour: 7,
     nightBrightnessCap: 22,
@@ -178,6 +182,16 @@ function createMockState() {
       baselineState: 3,
       baselineLabel: "休息",
       baselineConfidence: 0.65,
+      quantizedState: 1,
+      quantizedLabel: "专注",
+      quantizedConfidence: 0.8,
+      quantizedInferenceMicros: 38,
+      feedbackRequested: false,
+      feedbackSuggestedState: 1,
+      feedbackSuggestedLabel: "专注",
+      feedbackRequestCount: 2,
+      feedbackResolvedCount: 2,
+      demoActive: false,
       features: [0.12, 0.08, 0.04, 0.38, 0.13],
       scores: [0.82, 0.31, 0.54, 0.22],
       samples: [8, 8, 8, 8],
@@ -196,6 +210,7 @@ function createMockState() {
         total: 8,
         personalizedCorrect: 7,
         baselineCorrect: 4,
+        quantizedCorrect: 7,
         samples: [2, 2, 2, 2],
         confusion: [[2, 0, 0, 0], [0, 2, 0, 0], [0, 1, 1, 0], [0, 0, 0, 1]],
       },
@@ -203,6 +218,28 @@ function createMockState() {
         [0, 1, 82, false], [30000, 1, 79, false], [60000, 2, 71, false],
         [90000, 2, 76, true], [120000, 3, 68, true], [150000, 1, 83, false],
       ],
+    },
+    competition: {
+      currentFocusMs: 12 * 60 * 1000,
+      longestFocusMs: 28 * 60 * 1000,
+      focusSessionCount: 3,
+      focusInterruptionCount: 1,
+      stateChangeCount: 5,
+      focusScore: 78,
+      healthScore: 100,
+      audioHealthy: true,
+      motionHealthy: true,
+      environmentHealthy: true,
+      displayHealthy: true,
+      powerHealthy: true,
+      wifiHealthy: true,
+      localOnly: true,
+      rawUploadCount: 0,
+      cloudInferenceCount: 0,
+      estimatedCurrentMa: 228,
+      estimatedPowerW: 1.14,
+      estimatedEnergyWh: 0.18,
+      stateDurationMs: [48 * 60 * 1000, 8 * 60 * 1000, 15 * 60 * 1000, 5 * 60 * 1000],
     },
     smoothSpectrum: Array.from({ length: 32 }, (_, i) => Math.max(0, Math.sin(i / 4) * 3 + 2)),
     _mockStartedAt: Date.now(),
@@ -307,6 +344,21 @@ function bindControls() {
   bindCheckbox("smartScenes", (checked) => postControl({ smartScenes: checked }));
   bindCheckbox("deskAiEnabled", (checked) => postControl({ deskAiEnabled: checked }));
   bindCheckbox("deskAiAutoScene", (checked) => postControl({ deskAiAutoScene: checked }));
+  bindCheckbox("deskAiActiveLearning", (checked) => postControl({ deskAiActiveLearning: checked }));
+  bindCheckbox("competitionDemoMode", (checked) => postControl({ competitionDemoMode: checked }));
+  bindCheckbox("energyAwareMode", (checked) => postControl({ energyAwareMode: checked }));
+  bindRange(
+    "deskAiFeedbackThreshold",
+    "deskAiFeedbackThresholdValue",
+    (value) => postControl({ deskAiFeedbackThreshold: Number(value) }),
+    (value) => `${value}%`,
+  );
+  qsa("[data-ai-feedback]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const ok = await postControl({ deskAiFeedbackLabel: Number(button.dataset.aiFeedback) });
+      if (ok) toast("标注已用于验证和个性化学习");
+    });
+  });
   qsa("[data-ai-label]").forEach((button) => {
     button.addEventListener("click", async () => {
       const ok = await postControl({ deskAiCalibration: Number(button.dataset.aiLabel) });
@@ -648,6 +700,7 @@ function receiveState(data) {
   app.state.weather = { ...app.state.weather, ...(normalized.weather || {}) };
   app.state.game = { ...app.state.game, ...(normalized.game || {}) };
   app.state.deskAi = { ...app.state.deskAi, ...(normalized.deskAi || {}) };
+  app.state.competition = { ...app.state.competition, ...(normalized.competition || {}) };
 }
 
 function normalizeState(data) {
@@ -682,7 +735,10 @@ function normalizeState(data) {
     game: data.game || app.state.game,
     deskAiEnabled: data.deskAiEnabled ?? data.deskAi?.enabled ?? app.state.deskAiEnabled,
     deskAiAutoScene: data.deskAiAutoScene ?? data.deskAi?.autoScene ?? app.state.deskAiAutoScene,
+    deskAiActiveLearning: data.deskAiActiveLearning ?? data.deskAi?.activeLearning ?? app.state.deskAiActiveLearning,
+    deskAiFeedbackThreshold: data.deskAiFeedbackThreshold ?? data.deskAi?.feedbackThreshold ?? app.state.deskAiFeedbackThreshold,
     deskAi: data.deskAi || app.state.deskAi,
+    competition: data.competition || app.state.competition,
   };
 }
 
@@ -780,6 +836,19 @@ function applyLocalControlPatch(patch) {
     s.deskAiAutoScene = Boolean(patch.deskAiAutoScene);
     s.deskAi.autoScene = s.deskAiAutoScene;
   }
+  if (patch.deskAiActiveLearning !== undefined) {
+    s.deskAiActiveLearning = Boolean(patch.deskAiActiveLearning);
+    s.deskAi.activeLearning = s.deskAiActiveLearning;
+  }
+  if (patch.deskAiFeedbackThreshold !== undefined) {
+    s.deskAiFeedbackThreshold = Number(patch.deskAiFeedbackThreshold);
+    s.deskAi.feedbackThreshold = s.deskAiFeedbackThreshold;
+  }
+  if (patch.competitionDemoMode !== undefined) {
+    s.competitionDemoMode = Boolean(patch.competitionDemoMode);
+    s.deskAi.demoActive = s.competitionDemoMode;
+  }
+  if (patch.energyAwareMode !== undefined) s.energyAwareMode = Boolean(patch.energyAwareMode);
   if (patch.deskAiCalibration !== undefined) {
     const label = Number(patch.deskAiCalibration);
     const samples = [...(s.deskAi.samples || [0, 0, 0, 0])];
@@ -793,18 +862,24 @@ function applyLocalControlPatch(patch) {
   }
   if (patch.deskAiEvaluationLabel !== undefined) {
     const actual = Number(patch.deskAiEvaluationLabel) - 1;
-    const evaluation = s.deskAi.evaluation || { total: 0, personalizedCorrect: 0, baselineCorrect: 0, samples: [0, 0, 0, 0], confusion: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
+    const evaluation = s.deskAi.evaluation || { total: 0, personalizedCorrect: 0, baselineCorrect: 0, quantizedCorrect: 0, samples: [0, 0, 0, 0], confusion: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
     const predicted = Math.max(0, Number(s.deskAi.state || 1) - 1);
     const baseline = Math.max(0, Number(s.deskAi.baselineState || 1) - 1);
+    const quantized = Math.max(0, Number(s.deskAi.quantizedState || 1) - 1);
     evaluation.total += 1;
     evaluation.samples[actual] += 1;
     evaluation.confusion[actual][predicted] += 1;
     if (actual === predicted) evaluation.personalizedCorrect += 1;
     if (actual === baseline) evaluation.baselineCorrect += 1;
+    if (actual === quantized) evaluation.quantizedCorrect = Number(evaluation.quantizedCorrect || 0) + 1;
     s.deskAi.evaluation = evaluation;
   }
+  if (patch.deskAiFeedbackLabel !== undefined) {
+    s.deskAi.feedbackRequested = false;
+    s.deskAi.feedbackResolvedCount = Number(s.deskAi.feedbackResolvedCount || 0) + 1;
+  }
   if (patch.deskAiResetEvaluation) {
-    s.deskAi.evaluation = { total: 0, personalizedCorrect: 0, baselineCorrect: 0, samples: [0, 0, 0, 0], confusion: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
+    s.deskAi.evaluation = { total: 0, personalizedCorrect: 0, baselineCorrect: 0, quantizedCorrect: 0, samples: [0, 0, 0, 0], confusion: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
   }
   if (patch.quietStartHour !== undefined) s.quietStartHour = clamp(Number(patch.quietStartHour), 0, 23);
   if (patch.quietEndHour !== undefined) s.quietEndHour = clamp(Number(patch.quietEndHour), 0, 23);
@@ -1580,7 +1655,13 @@ function renderStateText() {
   byId("homeAiReason").textContent = aiExplanation(aiState, ai.features || []);
   byId("aiLabel").textContent = aiState;
   byId("aiConfidence").textContent = `${aiConfidence}%`;
-  byId("aiDecision").textContent = aiExplanation(aiState, ai.features || []);
+  byId("aiDecision").textContent = ai.demoActive
+    ? `演示数据正在运行：${aiExplanation(aiState, ai.features || [])}`
+    : aiExplanation(aiState, ai.features || []);
+  const feedbackPanel = byId("aiFeedbackPanel");
+  feedbackPanel.hidden = !ai.feedbackRequested;
+  byId("aiFeedbackHint").textContent =
+    `设备暂时判断为“${DESK_STATES[ai.feedbackSuggestedState] || ai.feedbackSuggestedLabel || aiState}”，请提供真实标签。已完成 ${ai.feedbackResolvedCount || 0} 次闭环学习。`;
   const aiFeatures = ai.features || [];
   renderAiFeature("Audio", aiFeatures[0]);
   renderAiFeature("Bass", aiFeatures[1]);
@@ -1605,6 +1686,9 @@ function renderStateText() {
   byId("aiPersonalizedAccuracy").textContent = evaluationTotal
     ? `${Math.round((Number(evaluation.personalizedCorrect || 0) / evaluationTotal) * 100)}%`
     : "--";
+  byId("aiQuantizedAccuracy").textContent = evaluationTotal
+    ? `${Math.round((Number(evaluation.quantizedCorrect || 0) / evaluationTotal) * 100)}%`
+    : "--";
   byId("aiBaselineAccuracy").textContent = evaluationTotal
     ? `${Math.round((Number(evaluation.baselineCorrect || 0) / evaluationTotal) * 100)}%`
     : "--";
@@ -1628,6 +1712,12 @@ function renderStateText() {
     ? `离线推理已启用：${ai.offlineInferenceCount ?? 0}`
     : `离线推理次数：${ai.offlineInferenceCount ?? 0}`;
   renderAiTimeline(ai.timeline || [], s.uptimeMs || 0);
+  const competition = s.competition || {};
+  byId("focusScore").textContent = `${competition.focusScore || 0} 分`;
+  byId("currentFocusTime").textContent = formatDuration(competition.currentFocusMs || 0);
+  byId("longestFocusTime").textContent = formatDuration(competition.longestFocusMs || 0);
+  byId("focusSessions").textContent = String(competition.focusSessionCount || 0);
+  byId("focusInterruptions").textContent = String(competition.focusInterruptionCount || 0);
   byId("timerDisplay").textContent = formatTimerText();
   byId("weatherTemp").textContent = `${formatNumber(s.weather?.temperature, 1)} C`;
   byId("weatherMeta").textContent = `${s.weather?.city || s.weatherCity} / 湿度 ${s.weather?.humidity ?? "--"}% / 风速 ${formatNumber(s.weather?.windSpeed, 1)}`;
@@ -1640,6 +1730,18 @@ function renderStateText() {
   byId("deviceDcdc").textContent = s.dcdcEnabled ? "已开启" : "已关闭";
   byId("deviceHeap").textContent = s.freeHeap ? `${Math.round(s.freeHeap / 1024)} KB` : "--";
   byId("deviceUptime").textContent = formatDuration(s.uptimeMs || 0);
+  byId("healthScore").textContent = `${competition.healthScore ?? "--"} 分`;
+  renderHealthItem("healthAudio", "音频", competition.audioHealthy);
+  renderHealthItem("healthMotion", "姿态", competition.motionHealthy);
+  renderHealthItem("healthEnvironment", "环境", competition.environmentHealthy);
+  renderHealthItem("healthDisplay", "显示", competition.displayHealthy);
+  renderHealthItem("healthPower", "电源", competition.powerHealthy);
+  renderHealthItem("healthWifi", "网络", competition.wifiHealthy);
+  byId("privacyMode").textContent = competition.localOnly ? "本地处理" : "需检查";
+  byId("cloudInferenceCount").textContent = `${competition.cloudInferenceCount || 0} 次`;
+  byId("rawUploadCount").textContent = `${competition.rawUploadCount || 0} 次`;
+  byId("estimatedPower").textContent = `${formatNumber(competition.estimatedPowerW, 2)} W`;
+  byId("estimatedEnergy").textContent = `${formatNumber(competition.estimatedEnergyWh, 3)} Wh`;
   byId("lowMeter").style.transform = `scaleX(${clamp(s.audioLowEnergy || 0, 0.03, 1)})`;
   byId("midMeter").style.transform = `scaleX(${clamp(s.audioMidEnergy || 0, 0.03, 1)})`;
   byId("highMeter").style.transform = `scaleX(${clamp(s.audioHighEnergy || 0, 0.03, 1)})`;
@@ -1664,6 +1766,11 @@ function renderControls() {
   setChecked("smartScenes", s.smartScenes);
   setChecked("deskAiEnabled", s.deskAiEnabled);
   setChecked("deskAiAutoScene", s.deskAiAutoScene);
+  setChecked("deskAiActiveLearning", s.deskAiActiveLearning);
+  setChecked("competitionDemoMode", s.competitionDemoMode);
+  setChecked("energyAwareMode", s.energyAwareMode);
+  setValue("deskAiFeedbackThreshold", s.deskAiFeedbackThreshold);
+  byId("deskAiFeedbackThresholdValue").textContent = `${s.deskAiFeedbackThreshold}%`;
   setChecked("gammaCorrection", s.gammaCorrection);
   setChecked("smoothTransitions", s.smoothTransitions);
   setValue("transitionStyle", s.transitionStyle);
@@ -1750,6 +1857,12 @@ function formatTimerText() {
 function formatNumber(value, digits = 1) {
   if (value === undefined || value === null || Number.isNaN(Number(value))) return "--";
   return Number(value).toFixed(digits);
+}
+
+function renderHealthItem(id, label, healthy) {
+  const element = byId(id);
+  element.textContent = `${label} ${healthy ? "正常" : "待检查"}`;
+  element.classList.toggle("ok", Boolean(healthy));
 }
 
 function renderAiFeature(name, value) {

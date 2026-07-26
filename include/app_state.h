@@ -165,6 +165,10 @@ struct ControlState {
   bool smartScenes = false;
   bool deskAiEnabled = true;
   bool deskAiAutoScene = false;
+  bool deskAiActiveLearning = true;
+  uint8_t deskAiFeedbackThreshold = 48;
+  bool competitionDemoMode = false;
+  bool energyAwareMode = true;
   float deskAiCentroids[DeskAiClassCount][DeskAiFeatureCount] = {};
   uint16_t deskAiSampleCounts[DeskAiClassCount] = {};
   uint8_t quietStartHour = AppConfig::DefaultQuietStartHour;
@@ -270,9 +274,11 @@ struct ContextState {
 struct DeskAiState {
   DeskState state = DeskState::Unknown;
   DeskState baselineState = DeskState::Unknown;
+  DeskState quantizedState = DeskState::Unknown;
   DeskState lastCalibrationLabel = DeskState::Unknown;
   float confidence = 0.0f;
   float baselineConfidence = 0.0f;
+  float quantizedConfidence = 0.0f;
   float features[DeskAiFeatureCount] = {};
   float classScores[DeskAiClassCount] = {};
   uint32_t inferenceCount = 0;
@@ -283,9 +289,11 @@ struct DeskAiState {
   uint32_t offlineInferenceCount = 0;
   uint32_t lastOfflineInferenceMs = 0;
   uint16_t inferenceMicros = 0;
+  uint16_t quantizedInferenceMicros = 0;
   uint16_t evaluationTotal = 0;
   uint16_t personalizedCorrect = 0;
   uint16_t baselineCorrect = 0;
+  uint16_t quantizedCorrect = 0;
   uint16_t evaluationSamples[DeskAiClassCount] = {};
   uint16_t confusion[DeskAiClassCount][DeskAiClassCount] = {};
   uint8_t profileCoverage = 0;
@@ -302,6 +310,37 @@ struct DeskAiState {
   uint8_t timelineNext = 0;
   uint32_t lastTimelineEntryMs = 0;
   bool lastInferenceOffline = false;
+  bool demoActive = false;
+  bool feedbackRequested = false;
+  DeskState feedbackSuggestedState = DeskState::Unknown;
+  uint32_t feedbackRequestedMs = 0;
+  uint32_t feedbackRequestCount = 0;
+  uint32_t feedbackResolvedCount = 0;
+  uint32_t lowConfidenceSinceMs = 0;
+};
+
+struct CompetitionState {
+  uint32_t stateDurationMs[DeskAiClassCount] = {};
+  uint32_t currentFocusMs = 0;
+  uint32_t longestFocusMs = 0;
+  uint32_t focusSessionCount = 0;
+  uint32_t focusInterruptionCount = 0;
+  uint32_t stateChangeCount = 0;
+  uint8_t focusScore = 0;
+  uint8_t healthScore = 0;
+  bool audioHealthy = false;
+  bool motionHealthy = false;
+  bool environmentHealthy = false;
+  bool displayHealthy = false;
+  bool powerHealthy = false;
+  bool wifiHealthy = false;
+  bool localOnly = true;
+  uint32_t rawUploadCount = 0;
+  uint32_t cloudInferenceCount = 0;
+  float estimatedCurrentMa = 0.0f;
+  float estimatedPowerW = 0.0f;
+  float estimatedEnergyWh = 0.0f;
+  uint32_t lastUpdateMs = 0;
 };
 
 struct NotificationItem {
@@ -338,6 +377,9 @@ struct GameState {
   int8_t breakoutVelY = -1;
   int8_t breakoutPaddleX = 13;
   uint32_t breakoutBricks = 0;
+  int8_t pongVelX = 1;
+  int8_t pongVelY = -1;
+  int8_t pongPaddleX = 13;
   uint32_t reactionStartMs = 0;
   uint32_t reactionWaitMs = 0;
   uint32_t motionRestartLastMs = 0;
@@ -354,6 +396,7 @@ struct RenderState {
   GameState game;
   ContextState context;
   DeskAiState deskAi;
+  CompetitionState competition;
   NotificationState notifications;
   time_t unixTime = 0;
 };
@@ -385,6 +428,7 @@ GameState copyGameState();
 void updateGameState(const GameState &game);
 void updateContextState(const ContextState &context);
 void updateDeskAiState(const DeskAiState &deskAi);
+void updateCompetitionState(const CompetitionState &competition);
 NotificationState copyNotificationState();
 void updateNotificationState(const NotificationState &notifications);
 void updateScreenSnapshot(const CRGB *leds, size_t count);

@@ -35,6 +35,13 @@ struct Classification {
   float scores[DeskAiClassCount] = {};
 };
 
+struct QuantizedClassification {
+  uint8_t best = 0;
+  uint32_t bestDistance = UINT32_MAX;
+  uint32_t secondDistance = UINT32_MAX;
+  float confidence = 0.0f;
+};
+
 float clampUnit(float value) {
   return constrain(value, 0.0f, 1.0f);
 }
@@ -77,6 +84,36 @@ Classification classifyFeatures(
   return result;
 }
 
+QuantizedClassification classifyFeaturesInt8(
+    const float features[DeskAiFeatureCount],
+    const float centroids[DeskAiClassCount][DeskAiFeatureCount]) {
+  static constexpr uint8_t QuantizedWeights[DeskAiFeatureCount] = {12, 7, 13, 5, 11};
+  QuantizedClassification result;
+  for (uint8_t category = 0; category < DeskAiClassCount; ++category) {
+    uint32_t distance = 0;
+    for (size_t feature = 0; feature < DeskAiFeatureCount; ++feature) {
+      const int16_t input = static_cast<int16_t>(clampUnit(features[feature]) * 127.0f + 0.5f);
+      const int16_t center = static_cast<int16_t>(clampUnit(centroids[category][feature]) * 127.0f + 0.5f);
+      const int16_t difference = input - center;
+      distance += static_cast<uint32_t>(difference * difference) * QuantizedWeights[feature];
+    }
+    if (distance < result.bestDistance) {
+      result.secondDistance = result.bestDistance;
+      result.bestDistance = distance;
+      result.best = category;
+    } else if (distance < result.secondDistance) {
+      result.secondDistance = distance;
+    }
+  }
+  const float normalized = sqrtf(static_cast<float>(result.bestDistance) / (48.0f * 127.0f * 127.0f));
+  const float separation = result.secondDistance == UINT32_MAX
+                               ? 0.0f
+                               : clampUnit(static_cast<float>(result.secondDistance - result.bestDistance) /
+                                           static_cast<float>(48UL * 127UL * 127UL));
+  result.confidence = clampUnit((1.0f - normalized) * 0.68f + separation * 0.32f);
+  return result;
+}
+
 float centroidDistance(
     const float first[DeskAiFeatureCount],
     const float second[DeskAiFeatureCount]) {
@@ -108,6 +145,16 @@ void appendTimeline(DeskAiState &deskAi, uint32_t now, bool stateChanged, bool o
 }
 
 void extractFeatures(const RenderState &state, float features[DeskAiFeatureCount]) {
+  if (state.control.competitionDemoMode) {
+    const uint8_t demoClass = static_cast<uint8_t>((millis() / 8000UL) % DeskAiClassCount);
+    const float phase = static_cast<float>((millis() / 250UL) % 9) * 0.0025f;
+    for (size_t feature = 0; feature < DeskAiFeatureCount; ++feature) {
+      const float direction = ((feature + demoClass) & 1U) == 0 ? 1.0f : -1.0f;
+      features[feature] = clampUnit(DefaultCentroids[demoClass][feature] + phase * direction);
+    }
+    return;
+  }
+
   const float gain = state.control.audioAutoGain ? state.audio.autoGain : 1.0f;
   const float audioAboveFloor = fmaxf(0.0f, state.audio.rms - state.audio.noiseFloor * 1.08f);
   const float audio = clampUnit(audioAboveFloor * gain * 5.2f + state.audio.energy * gain * 1.35f);
@@ -184,7 +231,8 @@ bool recordDeskAiEvaluation(DeskAiState &deskAi, DeskState actualLabel) {
   const uint8_t actual = classIndex(actualLabel);
   const uint8_t predicted = classIndex(deskAi.state);
   const uint8_t baseline = classIndex(deskAi.baselineState);
-  if (actual == 0xFF || predicted == 0xFF || baseline == 0xFF) {
+  const uint8_t quantized = classIndex(deskAi.quantizedState);
+  if (actual == 0xFF || predicted == 0xFF || baseline == 0xFF || quantized == 0xFF) {
     return false;
   }
   ++deskAi.evaluationTotal;
@@ -196,7 +244,23 @@ bool recordDeskAiEvaluation(DeskAiState &deskAi, DeskState actualLabel) {
   if (baseline == actual) {
     ++deskAi.baselineCorrect;
   }
+  if (quantized == actual) {
+    ++deskAi.quantizedCorrect;
+  }
   deskAi.lastEvaluationMs = millis();
+  return true;
+}
+
+bool resolveDeskAiFeedback(ControlState &control, DeskAiState &deskAi, DeskState actualLabel) {
+  if (!recordDeskAiEvaluation(deskAi, actualLabel) ||
+      !calibrateDeskAiProfile(control, deskAi, actualLabel)) {
+    return false;
+  }
+  deskAi.feedbackRequested = false;
+  deskAi.feedbackSuggestedState = DeskState::Unknown;
+  deskAi.lowConfidenceSinceMs = 0;
+  ++deskAi.feedbackResolvedCount;
+  refreshDeskAiProfileMetrics(control, deskAi);
   return true;
 }
 
@@ -204,6 +268,7 @@ void resetDeskAiEvaluation(DeskAiState &deskAi) {
   deskAi.evaluationTotal = 0;
   deskAi.personalizedCorrect = 0;
   deskAi.baselineCorrect = 0;
+  deskAi.quantizedCorrect = 0;
   memset(deskAi.evaluationSamples, 0, sizeof(deskAi.evaluationSamples));
   memset(deskAi.confusion, 0, sizeof(deskAi.confusion));
   deskAi.lastEvaluationMs = millis();
@@ -270,11 +335,20 @@ void serviceDeskAi() {
 
   Classification personalized = classifyFeatures(features, state.control.deskAiCentroids);
   Classification baseline = classifyFeatures(features, DefaultCentroids);
+  const uint32_t quantizedStartedUs = micros();
+  const QuantizedClassification quantized =
+      classifyFeaturesInt8(features, state.control.deskAiCentroids);
+  const uint32_t quantizedElapsedUs = micros() - quantizedStartedUs;
   uint8_t best = personalized.best;
   float bestDistance = personalized.bestDistance;
   memcpy(next.classScores, personalized.scores, sizeof(next.classScores));
   next.baselineState = stateForClass(baseline.best);
   next.baselineConfidence = baseline.confidence;
+  next.quantizedState = stateForClass(quantized.best);
+  next.quantizedConfidence = quantized.confidence;
+  next.quantizedInferenceMicros =
+      static_cast<uint16_t>(quantizedElapsedUs < 65535 ? quantizedElapsedUs : 65535);
+  next.demoActive = state.control.competitionDemoMode;
   refreshDeskAiProfileMetrics(state.control, next);
 
   if (now - lastEngagementMs >= AppConfig::DeskAiAwayTimeoutMs) {
@@ -304,6 +378,29 @@ void serviceDeskAi() {
       next.stableSinceMs = now;
     }
     next.state = bestState;
+  }
+
+  const float feedbackThreshold =
+      static_cast<float>(state.control.deskAiFeedbackThreshold) / 100.0f;
+  if (!state.control.deskAiEnabled || !state.control.deskAiActiveLearning ||
+      state.control.competitionDemoMode || next.confidence >= feedbackThreshold) {
+    next.lowConfidenceSinceMs = 0;
+    if (!state.control.deskAiActiveLearning || state.control.competitionDemoMode) {
+      next.feedbackRequested = false;
+    }
+  } else {
+    if (next.lowConfidenceSinceMs == 0) {
+      next.lowConfidenceSinceMs = now;
+    }
+    const bool heldLongEnough = now - next.lowConfidenceSinceMs >= AppConfig::DeskAiFeedbackHoldMs;
+    const bool cooldownElapsed = next.feedbackRequestedMs == 0 ||
+                                 now - next.feedbackRequestedMs >= AppConfig::DeskAiFeedbackCooldownMs;
+    if (!next.feedbackRequested && heldLongEnough && cooldownElapsed) {
+      next.feedbackRequested = true;
+      next.feedbackSuggestedState = bestState;
+      next.feedbackRequestedMs = now;
+      ++next.feedbackRequestCount;
+    }
   }
 
   next.inferenceCount++;

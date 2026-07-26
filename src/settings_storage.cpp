@@ -11,7 +11,7 @@
 
 namespace {
 constexpr const char *NvsNamespace = "pxclock";
-constexpr uint32_t SettingsVersion = 4;
+constexpr uint32_t SettingsVersion = 5;
 constexpr uint32_t SaveDelayMs = 1500;
 
 portMUX_TYPE saveMux = portMUX_INITIALIZER_UNLOCKED;
@@ -144,7 +144,8 @@ void loadSettingsFromNvs(ControlState &control) {
   }
 
   const uint32_t version = prefs.getUInt("ver", 0);
-  if (version != 1 && version != 2 && version != 3 && version != SettingsVersion) {
+  if (version != 1 && version != 2 && version != 3 && version != 4 &&
+      version != SettingsVersion) {
     prefs.end();
     Serial.println("[NVS] no valid settings, using defaults");
     return;
@@ -194,6 +195,11 @@ void loadSettingsFromNvs(ControlState &control) {
   control.smartScenes = prefs.getBool("scenes", control.smartScenes);
   control.deskAiEnabled = prefs.getBool("aiOn", control.deskAiEnabled);
   control.deskAiAutoScene = prefs.getBool("aiAuto", control.deskAiAutoScene);
+  control.deskAiActiveLearning = prefs.getBool("aiLearn", control.deskAiActiveLearning);
+  control.deskAiFeedbackThreshold = clampU8(
+      prefs.getUChar("aiFeed", control.deskAiFeedbackThreshold), 25, 85);
+  control.energyAwareMode = prefs.getBool("energy", control.energyAwareMode);
+  control.competitionDemoMode = false;
   if (prefs.getBytesLength("aiCtr") == sizeof(control.deskAiCentroids)) {
     prefs.getBytes("aiCtr", control.deskAiCentroids, sizeof(control.deskAiCentroids));
   }
@@ -271,6 +277,9 @@ void saveSettingsToNvs(const ControlState &control) {
   prefs.putBool("scenes", control.smartScenes);
   prefs.putBool("aiOn", control.deskAiEnabled);
   prefs.putBool("aiAuto", control.deskAiAutoScene);
+  prefs.putBool("aiLearn", control.deskAiActiveLearning);
+  prefs.putUChar("aiFeed", clampU8(control.deskAiFeedbackThreshold, 25, 85));
+  prefs.putBool("energy", control.energyAwareMode);
   prefs.putBytes("aiCtr", control.deskAiCentroids, sizeof(control.deskAiCentroids));
   prefs.putBytes("aiCnt", control.deskAiSampleCounts, sizeof(control.deskAiSampleCounts));
   prefs.putUChar("quietFrom", clampU8(control.quietStartHour, 0, 23));

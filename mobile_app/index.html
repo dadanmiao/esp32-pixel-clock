@@ -157,6 +157,33 @@
               <b>色彩校正</b>
             </label>
           </div>
+          <div class="two-switches">
+            <label class="switch">
+              <input id="deskAiActiveLearning" type="checkbox" checked>
+              <span></span>
+              <b>低置信度主动询问</b>
+            </label>
+            <label class="switch">
+              <input id="competitionDemoMode" type="checkbox">
+              <span></span>
+              <b>离线演示数据</b>
+            </label>
+          </div>
+          <label class="field">
+            <span>主动询问阈值 <b id="deskAiFeedbackThresholdValue">48%</b></span>
+            <input id="deskAiFeedbackThreshold" type="range" min="25" max="85" value="48">
+          </label>
+          <section id="aiFeedbackPanel" class="ai-feedback-panel" hidden>
+            <span class="section-kicker">设备需要你的帮助</span>
+            <h3>当前真实状态是什么？</h3>
+            <p id="aiFeedbackHint">模型置信度较低，这次标注会同时用于验证和个性化学习。</p>
+            <div class="calibration-grid">
+              <button data-ai-feedback="1">专注</button>
+              <button data-ai-feedback="2">会议</button>
+              <button data-ai-feedback="3">休息</button>
+              <button data-ai-feedback="4">离开</button>
+            </div>
+          </section>
           <div id="sceneStatus" class="micro-status">手动场景</div>
           <div class="two-switches">
             <label class="switch">
@@ -513,6 +540,7 @@
           </div>
           <div class="evaluation-metrics">
             <div><span>个性化准确率</span><strong id="aiPersonalizedAccuracy">--</strong></div>
+            <div><span>INT8 量化模型</span><strong id="aiQuantizedAccuracy">--</strong></div>
             <div><span>默认基线</span><strong id="aiBaselineAccuracy">--</strong></div>
             <div><span>真实标注样本</span><strong id="aiEvaluationTotal">0</strong></div>
           </div>
@@ -527,6 +555,19 @@
             <span id="aiOfflineProof" class="mono-pill">离线推理：--</span>
           </div>
           <div id="aiTimeline" class="ai-timeline" aria-label="桌面状态时间线"></div>
+          <div class="training-heading">
+            <div>
+              <h3>本次运行专注效果</h3>
+              <p>由本地识别结果累计，重启后重新统计，用于展示系统干预效果。</p>
+            </div>
+            <span id="focusScore" class="mono-pill">0 分</span>
+          </div>
+          <div class="evaluation-metrics">
+            <div><span>当前专注</span><strong id="currentFocusTime">0 分钟</strong></div>
+            <div><span>最长专注</span><strong id="longestFocusTime">0 分钟</strong></div>
+            <div><span>专注轮次</span><strong id="focusSessions">0</strong></div>
+            <div><span>中断次数</span><strong id="focusInterruptions">0</strong></div>
+          </div>
         </section>
       </section>
 
@@ -604,6 +645,43 @@
           <div><span>DC-DC 电源</span><strong id="deviceDcdc">--</strong></div>
           <div><span>堆内存</span><strong id="deviceHeap">--</strong></div>
           <div><span>运行时间</span><strong id="deviceUptime">--</strong></div>
+        </section>
+        <section class="control-panel">
+          <div class="training-heading">
+            <div>
+              <h3>单机自检</h3>
+              <p>持续检查音频、姿态、环境、显示、电源与网络链路。</p>
+            </div>
+            <span id="healthScore" class="mono-pill">--</span>
+          </div>
+          <div class="health-grid">
+            <span id="healthAudio">音频 --</span>
+            <span id="healthMotion">姿态 --</span>
+            <span id="healthEnvironment">环境 --</span>
+            <span id="healthDisplay">显示 --</span>
+            <span id="healthPower">电源 --</span>
+            <span id="healthWifi">网络 --</span>
+          </div>
+        </section>
+        <section class="control-panel">
+          <div class="training-heading">
+            <div>
+              <h3>隐私与能耗证据</h3>
+              <p>只上传控制状态；原始麦克风和姿态数据留在设备本地。</p>
+            </div>
+            <span id="privacyMode" class="mono-pill">本地处理</span>
+          </div>
+          <div class="evaluation-metrics">
+            <div><span>云端推理</span><strong id="cloudInferenceCount">0 次</strong></div>
+            <div><span>原始数据上传</span><strong id="rawUploadCount">0 次</strong></div>
+            <div><span>估算功率</span><strong id="estimatedPower">-- W</strong></div>
+            <div><span>累计估算电量</span><strong id="estimatedEnergy">-- Wh</strong></div>
+          </div>
+          <label class="switch">
+            <input id="energyAwareMode" type="checkbox" checked>
+            <span></span>
+            <b>离开桌面时自动节能</b>
+          </label>
         </section>
         <section class="wifi-connect-card">
           <h3>设备 Wi-Fi</h3>

@@ -39,6 +39,20 @@ GamePoint nextPoint(GamePoint point, GameDirection dir) {
   return point;
 }
 
+GamePoint wrapPoint(GamePoint point) {
+  if (point.x < 0) {
+    point.x = GameBoardW - 1;
+  } else if (point.x >= GameBoardW) {
+    point.x = 0;
+  }
+  if (point.y < 0) {
+    point.y = GameBoardH - 1;
+  } else if (point.y >= GameBoardH) {
+    point.y = 0;
+  }
+  return point;
+}
+
 bool pointInBounds(GamePoint point) {
   return point.x >= 0 && point.x < GameBoardW && point.y >= 0 && point.y < GameBoardH;
 }
@@ -154,6 +168,14 @@ void resetBreakout(GameState &game) {
   game.nextDir = GameDirection::Up;
 }
 
+void resetPong(GameState &game) {
+  game.pongPaddleX = static_cast<int8_t>((GameBoardW - BreakoutPaddleWidth) / 2);
+  game.ball = {static_cast<int8_t>(GameBoardW / 2), static_cast<int8_t>(GameBoardH - 3)};
+  game.pongVelX = random(0, 2) == 0 ? -1 : 1;
+  game.pongVelY = -1;
+  game.nextDir = GameDirection::Up;
+}
+
 void resetReaction(GameState &game) {
   game.reactionReady = false;
   game.reactionStartMs = millis();
@@ -205,10 +227,12 @@ void updateDirectionFromMpu(GameState &game, const EnvironmentState &env) {
 
 void updateSnake(GameState &game) {
   game.dir = game.nextDir;
-  const GamePoint newHead = nextPoint(game.snake[0], game.dir);
+  // Snake is intentionally a wrap-around game: crossing any edge continues
+  // from the opposite side instead of ending the round.
+  const GamePoint newHead = wrapPoint(nextPoint(game.snake[0], game.dir));
   const bool eating = samePoint(newHead, game.food);
 
-  if (!pointInBounds(newHead) || snakeHitsSelf(game, newHead, eating)) {
+  if (snakeHitsSelf(game, newHead, eating)) {
     finishGame(game);
     return;
   }
@@ -266,10 +290,15 @@ void updateGravityBall(GameState &game, const EnvironmentState &env, bool useMpu
   }
 
   addGameScore(game);
-  game.target = {
-      static_cast<int8_t>(random(0, GameBoardW)),
-      static_cast<int8_t>(random(0, GameBoardH)),
-  };
+  for (uint8_t tries = 0; tries < 16; ++tries) {
+    game.target = {
+        static_cast<int8_t>(random(0, GameBoardW)),
+        static_cast<int8_t>(random(0, GameBoardH)),
+    };
+    if (!samePoint(game.ball, game.target)) {
+      break;
+    }
+  }
 }
 
 void updateBreakout(GameState &game, const EnvironmentState &env, bool useMpu) {
@@ -338,6 +367,69 @@ void updateBreakout(GameState &game, const EnvironmentState &env, bool useMpu) {
 
   game.ball = {static_cast<int8_t>(nextX), static_cast<int8_t>(nextY)};
 }
+
+void updatePong(GameState &game, const EnvironmentState &env, bool useMpu) {
+  int8_t paddleDx = 0;
+  if (useMpu) {
+    if (env.accelX > 0.25f) {
+      paddleDx = 2;
+    } else if (env.accelX < -0.25f) {
+      paddleDx = -2;
+    }
+  } else if (game.nextDir == GameDirection::Left) {
+    paddleDx = -2;
+  } else if (game.nextDir == GameDirection::Right) {
+    paddleDx = 2;
+  }
+  if (paddleDx != 0) {
+    game.pongPaddleX = static_cast<int8_t>(
+        constrain(static_cast<int>(game.pongPaddleX) + paddleDx, 0, GameBoardW - BreakoutPaddleWidth));
+  }
+  if (!useMpu && (game.nextDir == GameDirection::Left || game.nextDir == GameDirection::Right)) {
+    game.nextDir = GameDirection::Up;
+  }
+
+  int nextX = game.ball.x + game.pongVelX;
+  int nextY = game.ball.y + game.pongVelY;
+  if (nextX < 0) {
+    nextX = 0;
+    game.pongVelX = 1;
+  } else if (nextX >= GameBoardW) {
+    nextX = GameBoardW - 1;
+    game.pongVelX = -1;
+  }
+  if (nextY < 0) {
+    nextY = 0;
+    game.pongVelY = 1;
+  }
+
+  constexpr int PaddleY = GameBoardH - 1;
+  if (nextY >= PaddleY) {
+    const int left = game.pongPaddleX;
+    const int right = left + BreakoutPaddleWidth - 1;
+    if (nextX < left || nextX > right) {
+      finishGame(game);
+      return;
+    }
+    nextY = PaddleY - 1;
+    game.pongVelY = -1;
+    const int hit = nextX - left;
+    if (hit <= 1) {
+      game.pongVelX = -1;
+    } else if (hit >= BreakoutPaddleWidth - 2) {
+      game.pongVelX = 1;
+    }
+    addGameScore(game);
+  }
+  game.ball = {static_cast<int8_t>(nextX), static_cast<int8_t>(nextY)};
+}
+
+void updateReaction(GameState &game) {
+  if (!game.reactionReady && millis() - game.reactionStartMs >= game.reactionWaitMs) {
+    game.reactionReady = true;
+    game.reactionStartMs = millis();
+  }
+}
 } // namespace
 
 void gameReset(GameState &game, const ControlState &control) {
@@ -360,6 +452,9 @@ void gameReset(GameState &game, const ControlState &control) {
     case GameType::Reaction:
       resetReaction(game);
       break;
+    case GameType::Pong:
+      resetPong(game);
+      break;
     case GameType::Snake:
     default:
       resetSnake(game);
@@ -368,6 +463,9 @@ void gameReset(GameState &game, const ControlState &control) {
 }
 
 void gameStart(GameState &game) {
+  if (game.type == GameType::Reaction) {
+    resetReaction(game);
+  }
   game.runState = GameRunState::Running;
   game.lastStepMs = millis();
 }
@@ -386,6 +484,15 @@ void gameResume(GameState &game) {
 }
 
 void gameSetDirection(GameState &game, GameDirection dir) {
+  if (game.type == GameType::Reaction && game.runState == GameRunState::Running) {
+    if (!game.reactionReady) {
+      finishGame(game);
+      return;
+    }
+    addGameScore(game);
+    resetReaction(game);
+    return;
+  }
   if (game.type == GameType::Snake && game.runState == GameRunState::Running && isOpposite(game.dir, dir)) {
     return;
   }
@@ -412,10 +519,16 @@ void gameUpdate(GameState &game, const ControlState &control, const EnvironmentS
       return;
     }
   }
-  if (control.gameUseMpuControl && game.type != GameType::Breakout) {
+  if (control.gameUseMpuControl && game.type != GameType::Breakout &&
+      game.type != GameType::Pong && game.type != GameType::Reaction) {
     updateDirectionFromMpu(game, env);
   }
   if (game.runState != GameRunState::Running) {
+    return;
+  }
+
+  if (game.type == GameType::Reaction) {
+    updateReaction(game);
     return;
   }
 
@@ -432,11 +545,12 @@ void gameUpdate(GameState &game, const ControlState &control, const EnvironmentS
     case GameType::GravityBall:
       updateGravityBall(game, env, control.gameUseMpuControl);
       break;
+    case GameType::Pong:
+      updatePong(game, env, control.gameUseMpuControl);
+      break;
     case GameType::Snake:
       updateSnake(game);
       break;
-    case GameType::Reaction:
-    case GameType::Pong:
     default:
       break;
   }

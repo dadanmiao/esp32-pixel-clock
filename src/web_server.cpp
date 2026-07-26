@@ -571,6 +571,10 @@ String buildStateJson() {
   doc["smartScenes"] = state.control.smartScenes;
   doc["deskAiEnabled"] = state.control.deskAiEnabled;
   doc["deskAiAutoScene"] = state.control.deskAiAutoScene;
+  doc["deskAiActiveLearning"] = state.control.deskAiActiveLearning;
+  doc["deskAiFeedbackThreshold"] = state.control.deskAiFeedbackThreshold;
+  doc["competitionDemoMode"] = state.control.competitionDemoMode;
+  doc["energyAwareMode"] = state.control.energyAwareMode;
   doc["quietStartHour"] = state.control.quietStartHour;
   doc["quietEndHour"] = state.control.quietEndHour;
   doc["nightBrightnessCap"] = state.control.nightBrightnessCap;
@@ -612,6 +616,9 @@ String buildStateJson() {
   if (state.control.smartScenes &&
       (state.context.quietHours || state.context.darkEnvironment)) {
     effectiveBrightness = min(effectiveBrightness, state.control.nightBrightnessCap);
+  }
+  if (state.control.energyAwareMode && state.deskAi.state == DeskState::Away) {
+    effectiveBrightness = min(effectiveBrightness, static_cast<uint8_t>(4));
   }
   doc["effectiveBrightness"] = effectiveBrightness;
   doc["lowLightThreshold"] = state.control.lowLightThreshold;
@@ -783,6 +790,8 @@ String buildStateJson() {
   game["ballY"] = state.game.ball.y;
   game["breakoutPaddleX"] = state.game.breakoutPaddleX;
   game["breakoutBricks"] = state.game.breakoutBricks;
+  game["pongPaddleX"] = state.game.pongPaddleX;
+  game["reactionReady"] = state.game.reactionReady;
 
   JsonObject deskAi = doc["deskAi"].to<JsonObject>();
   deskAi["enabled"] = state.control.deskAiEnabled;
@@ -793,9 +802,13 @@ String buildStateJson() {
   deskAi["baselineState"] = static_cast<uint8_t>(state.deskAi.baselineState);
   deskAi["baselineLabel"] = deskStateToString(state.deskAi.baselineState);
   deskAi["baselineConfidence"] = state.deskAi.baselineConfidence;
+  deskAi["quantizedState"] = static_cast<uint8_t>(state.deskAi.quantizedState);
+  deskAi["quantizedLabel"] = deskStateToString(state.deskAi.quantizedState);
+  deskAi["quantizedConfidence"] = state.deskAi.quantizedConfidence;
   deskAi["inferenceCount"] = state.deskAi.inferenceCount;
   deskAi["lastInferenceMs"] = state.deskAi.lastInferenceMs;
   deskAi["inferenceMicros"] = state.deskAi.inferenceMicros;
+  deskAi["quantizedInferenceMicros"] = state.deskAi.quantizedInferenceMicros;
   deskAi["lastCalibrationMs"] = state.deskAi.lastCalibrationMs;
   deskAi["lastCalibrationLabel"] = deskStateToString(state.deskAi.lastCalibrationLabel);
   deskAi["lastInferenceOffline"] = state.deskAi.lastInferenceOffline;
@@ -805,6 +818,15 @@ String buildStateJson() {
   deskAi["profileQuality"] = state.deskAi.profileQuality;
   deskAi["profileReady"] = state.deskAi.profileReady;
   deskAi["centroidSeparation"] = state.deskAi.centroidSeparation;
+  deskAi["activeLearning"] = state.control.deskAiActiveLearning;
+  deskAi["feedbackThreshold"] = state.control.deskAiFeedbackThreshold;
+  deskAi["feedbackRequested"] = state.deskAi.feedbackRequested;
+  deskAi["feedbackSuggestedState"] = static_cast<uint8_t>(state.deskAi.feedbackSuggestedState);
+  deskAi["feedbackSuggestedLabel"] = deskStateToString(state.deskAi.feedbackSuggestedState);
+  deskAi["feedbackRequestedMs"] = state.deskAi.feedbackRequestedMs;
+  deskAi["feedbackRequestCount"] = state.deskAi.feedbackRequestCount;
+  deskAi["feedbackResolvedCount"] = state.deskAi.feedbackResolvedCount;
+  deskAi["demoActive"] = state.deskAi.demoActive;
   deskAi["minSamplesPerClass"] = AppConfig::DeskAiMinCalibrationSamplesPerClass;
   deskAi["recommendedSamplesPerClass"] = AppConfig::DeskAiRecommendedCalibrationSamplesPerClass;
   JsonArray features = deskAi["features"].to<JsonArray>();
@@ -823,6 +845,7 @@ String buildStateJson() {
   evaluation["total"] = state.deskAi.evaluationTotal;
   evaluation["personalizedCorrect"] = state.deskAi.personalizedCorrect;
   evaluation["baselineCorrect"] = state.deskAi.baselineCorrect;
+  evaluation["quantizedCorrect"] = state.deskAi.quantizedCorrect;
   evaluation["lastEvaluationMs"] = state.deskAi.lastEvaluationMs;
   JsonArray evaluationSamples = evaluation["samples"].to<JsonArray>();
   for (uint16_t sample : state.deskAi.evaluationSamples) {
@@ -846,6 +869,31 @@ String buildStateJson() {
     point.add(static_cast<uint8_t>(entry.state));
     point.add(entry.confidence);
     point.add(entry.offline);
+  }
+
+  JsonObject competition = doc["competition"].to<JsonObject>();
+  competition["currentFocusMs"] = state.competition.currentFocusMs;
+  competition["longestFocusMs"] = state.competition.longestFocusMs;
+  competition["focusSessionCount"] = state.competition.focusSessionCount;
+  competition["focusInterruptionCount"] = state.competition.focusInterruptionCount;
+  competition["stateChangeCount"] = state.competition.stateChangeCount;
+  competition["focusScore"] = state.competition.focusScore;
+  competition["healthScore"] = state.competition.healthScore;
+  competition["audioHealthy"] = state.competition.audioHealthy;
+  competition["motionHealthy"] = state.competition.motionHealthy;
+  competition["environmentHealthy"] = state.competition.environmentHealthy;
+  competition["displayHealthy"] = state.competition.displayHealthy;
+  competition["powerHealthy"] = state.competition.powerHealthy;
+  competition["wifiHealthy"] = state.competition.wifiHealthy;
+  competition["localOnly"] = state.competition.localOnly;
+  competition["rawUploadCount"] = state.competition.rawUploadCount;
+  competition["cloudInferenceCount"] = state.competition.cloudInferenceCount;
+  competition["estimatedCurrentMa"] = state.competition.estimatedCurrentMa;
+  competition["estimatedPowerW"] = state.competition.estimatedPowerW;
+  competition["estimatedEnergyWh"] = state.competition.estimatedEnergyWh;
+  JsonArray stateDurationMs = competition["stateDurationMs"].to<JsonArray>();
+  for (uint32_t duration : state.competition.stateDurationMs) {
+    stateDurationMs.add(duration);
   }
 
   JsonArray spectrum = doc["spectrum"].to<JsonArray>();
@@ -1095,6 +1143,28 @@ void handleControlBody(AsyncWebServerRequest *request, uint8_t *data, size_t len
     state.control.deskAiAutoScene = doc["deskAiAutoScene"];
     settingsChanged = true;
   }
+  if (doc["deskAiActiveLearning"].is<bool>()) {
+    state.control.deskAiActiveLearning = doc["deskAiActiveLearning"];
+    if (!state.control.deskAiActiveLearning) {
+      state.deskAi.feedbackRequested = false;
+      state.deskAi.lowConfidenceSinceMs = 0;
+    }
+    settingsChanged = true;
+  }
+  if (doc["deskAiFeedbackThreshold"].is<int>()) {
+    state.control.deskAiFeedbackThreshold = static_cast<uint8_t>(
+        constrain(doc["deskAiFeedbackThreshold"].as<int>(), 25, 85));
+    settingsChanged = true;
+  }
+  if (doc["competitionDemoMode"].is<bool>()) {
+    state.control.competitionDemoMode = doc["competitionDemoMode"];
+    state.deskAi.feedbackRequested = false;
+    state.deskAi.lowConfidenceSinceMs = 0;
+  }
+  if (doc["energyAwareMode"].is<bool>()) {
+    state.control.energyAwareMode = doc["energyAwareMode"];
+    settingsChanged = true;
+  }
   if (doc["deskAiCalibration"].is<int>()) {
     const int label = constrain(doc["deskAiCalibration"].as<int>(), 1, 4);
     if (calibrateDeskAiProfile(state.control, state.deskAi, static_cast<DeskState>(label))) {
@@ -1112,6 +1182,13 @@ void handleControlBody(AsyncWebServerRequest *request, uint8_t *data, size_t len
   if (doc["deskAiEvaluationLabel"].is<int>()) {
     const int label = constrain(doc["deskAiEvaluationLabel"].as<int>(), 1, 4);
     recordDeskAiEvaluation(state.deskAi, static_cast<DeskState>(label));
+  }
+  if (doc["deskAiFeedbackLabel"].is<int>()) {
+    const int label = constrain(doc["deskAiFeedbackLabel"].as<int>(), 1, 4);
+    if (resolveDeskAiFeedback(state.control, state.deskAi, static_cast<DeskState>(label))) {
+      enqueueNotification("AI LABEL OK", CRGB(0x3A, 0xD7, 0xFF), 2200, 62);
+      settingsChanged = true;
+    }
   }
   if (doc["deskAiResetEvaluation"].is<bool>() && doc["deskAiResetEvaluation"].as<bool>()) {
     resetDeskAiEvaluation(state.deskAi);

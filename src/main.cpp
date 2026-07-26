@@ -7,6 +7,7 @@
 
 #include "app_state.h"
 #include "audio_task.h"
+#include "competition_metrics.h"
 #include "display_task.h"
 #include "desk_ai.h"
 #include "game_logic.h"
@@ -170,6 +171,7 @@ void loop() {
   }
   serviceSceneEngine();
   serviceDeskAi();
+  serviceCompetitionMetrics();
   serviceNotifications();
   serviceWiFiManager();
   serviceWebServer();
