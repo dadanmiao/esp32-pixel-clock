@@ -339,6 +339,8 @@ struct GameState {
   uint32_t breakoutBricks = 0;
   uint32_t reactionStartMs = 0;
   uint32_t reactionWaitMs = 0;
+  uint32_t motionRestartLastMs = 0;
+  bool motionRestartActive = false;
   bool reactionReady = false;
 };
 

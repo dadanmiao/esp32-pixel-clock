@@ -47,6 +47,30 @@ uint16_t boundedGameSpeed(uint16_t speedMs) {
   return constrain(speedMs, static_cast<uint16_t>(60), static_cast<uint16_t>(600));
 }
 
+bool gameMotionDetected(GameState &game, const EnvironmentState &env) {
+  constexpr float MotionThreshold = 0.85f;
+  constexpr float MotionReleaseThreshold = 0.45f;
+  constexpr uint32_t MotionDebounceMs = 140;
+
+  if (!env.mpuOnline) {
+    return false;
+  }
+
+  const float motion = fabsf(env.accelX) + fabsf(env.accelY) + fabsf(env.accelZ - 1.0f) +
+                       (fabsf(env.gyroX) + fabsf(env.gyroY) + fabsf(env.gyroZ)) * 0.015f;
+  const uint32_t now = millis();
+  if (motion < MotionReleaseThreshold) {
+    game.motionRestartActive = false;
+  }
+  if (motion < MotionThreshold || game.motionRestartActive || now - game.motionRestartLastMs < MotionDebounceMs) {
+    return false;
+  }
+
+  game.motionRestartActive = true;
+  game.motionRestartLastMs = now;
+  return true;
+}
+
 uint32_t breakoutFullBrickMask() {
   uint32_t mask = 0;
   for (uint8_t i = 0; i < BreakoutBrickCount; ++i) {
@@ -252,9 +276,9 @@ void updateBreakout(GameState &game, const EnvironmentState &env, bool useMpu) {
   int8_t paddleDx = 0;
   if (useMpu) {
     if (env.accelX > 0.25f) {
-      paddleDx = 1;
+      paddleDx = 2;
     } else if (env.accelX < -0.25f) {
-      paddleDx = -1;
+      paddleDx = -2;
     }
   } else if (game.nextDir == GameDirection::Left) {
     paddleDx = -2;
@@ -374,6 +398,20 @@ void gameUpdate(GameState &game, const ControlState &control, const EnvironmentS
   }
 
   game.stepIntervalMs = boundedGameSpeed(control.gameSpeedMs);
+  if (game.runState == GameRunState::GameOver) {
+    if (gameMotionDetected(game, env)) {
+      gameReset(game, control);
+      gameStart(game);
+    }
+    return;
+  }
+  if (game.runState == GameRunState::Idle) {
+    if (gameMotionDetected(game, env)) {
+      gameStart(game);
+    } else {
+      return;
+    }
+  }
   if (control.gameUseMpuControl && game.type != GameType::Breakout) {
     updateDirectionFromMpu(game, env);
   }

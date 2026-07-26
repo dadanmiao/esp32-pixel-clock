@@ -114,7 +114,7 @@ uint8_t mapBrightness(uint16_t rawLdr, const ControlState &control) {
   const uint16_t clamped = constrain(rawLdr, lo, hi);
   const uint16_t span = hi > lo ? hi - lo : 1;
   const float ratio = static_cast<float>(clamped - lo) / static_cast<float>(span);
-  const float target = AppConfig::MinAutoBrightness + ratio * (AppConfig::MaxAutoBrightness - AppConfig::MinAutoBrightness);
+  const float target = AppConfig::MaxAutoBrightness - ratio * (AppConfig::MaxAutoBrightness - AppConfig::MinAutoBrightness);
   ldrFiltered = ldrFiltered * 0.92f + target * 0.08f;
   return static_cast<uint8_t>(constrain(lroundf(ldrFiltered), AppConfig::MinAutoBrightness, AppConfig::MaxAutoBrightness));
 }
