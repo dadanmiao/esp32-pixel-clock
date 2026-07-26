@@ -7,4 +7,4 @@
 #include <Arduino.h>
 
 void startDisplayTask();
-
+uint32_t getDisplayTaskStackWatermark();

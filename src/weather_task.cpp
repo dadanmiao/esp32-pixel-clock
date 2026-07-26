@@ -14,6 +14,7 @@
 #include <WiFiClientSecure.h>
 
 #include "app_state.h"
+#include "competition_metrics.h"
 #include "settings_storage.h"
 
 namespace {
@@ -138,14 +139,17 @@ bool geocodeWeatherCity(const char *city, float &latitude, float &longitude, Wea
 
   const int status = http.GET();
   if (status != HTTP_CODE_OK) {
+    recordCompetitionExternalRequest();
     const String error = "城市定位 HTTP " + String(status);
     setLastError(weather, error.c_str());
     http.end();
     return false;
   }
 
+  const String payload = http.getString();
+  recordCompetitionExternalRequest(payload.length());
   JsonDocument doc;
-  const DeserializationError jsonErr = deserializeJson(doc, http.getString());
+  const DeserializationError jsonErr = deserializeJson(doc, payload);
   http.end();
   if (jsonErr) {
     setLastError(weather, "城市定位数据解析失败");
@@ -207,6 +211,7 @@ bool fetchWeatherOnce(ControlState &control, WeatherState &weather, bool &locati
 
   const int status = http.GET();
   if (status != HTTP_CODE_OK) {
+    recordCompetitionExternalRequest();
     String err = "天气 HTTP " + String(status);
     setLastError(weather, err.c_str());
     http.end();
@@ -214,6 +219,7 @@ bool fetchWeatherOnce(ControlState &control, WeatherState &weather, bool &locati
   }
 
   const String payload = http.getString();
+  recordCompetitionExternalRequest(payload.length());
   http.end();
 
   JsonDocument doc;
@@ -331,6 +337,10 @@ void startWeatherTask() {
       1,
       &weatherTaskHandle,
       0);
+}
+
+uint32_t getWeatherTaskStackWatermark() {
+  return weatherTaskHandle ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(weatherTaskHandle)) : 0;
 }
 
 void requestWeatherRefresh() {

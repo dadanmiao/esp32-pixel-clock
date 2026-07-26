@@ -9,3 +9,4 @@
 void initPowerManager();
 void startPowerTask();
 void markSystemFullyStarted();
+uint32_t getPowerTaskStackWatermark();

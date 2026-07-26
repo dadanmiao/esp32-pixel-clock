@@ -879,6 +879,71 @@ input[type="range"] {
 .training-metrics div:nth-child(2) { border-color: #8bd450; }
 .training-metrics div:nth-child(3) { border-color: var(--warm); }
 
+.validation-lock-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(217, 112, 49, 0.42);
+  border-radius: var(--radius);
+  background: #fff7ed;
+}
+
+.validation-lock-card.locked {
+  border-color: rgba(24, 135, 105, 0.42);
+  background: #eaf8f2;
+}
+
+.validation-lock-card p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.validation-lock-card button {
+  min-height: 40px;
+}
+
+.evidence-chain {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.evidence-chain span {
+  padding: 7px 4px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.evidence-chain span.ok {
+  border-color: rgba(24, 135, 105, 0.34);
+  background: #eaf8f2;
+  color: var(--accent-strong);
+}
+
+.blind-result {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.blind-result-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .wifi-connect-card {
   margin-top: 14px;
   padding: 14px;
@@ -966,6 +1031,46 @@ input[type="range"] {
   color: var(--accent-strong);
   border-color: rgba(24, 135, 105, 0.34);
   background: #eaf8f2;
+}
+
+.reliability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reliability-grid div {
+  padding: 9px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface-soft);
+}
+
+.reliability-grid span,
+.reliability-grid strong {
+  display: block;
+}
+
+.reliability-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.reliability-grid strong {
+  margin-top: 5px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 14px;
+}
+
+@media (max-width: 520px) {
+  .validation-lock-card {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-chain {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .timeline-heading {

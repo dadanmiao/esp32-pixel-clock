@@ -166,6 +166,7 @@ struct ControlState {
   bool deskAiEnabled = true;
   bool deskAiAutoScene = false;
   bool deskAiActiveLearning = true;
+  bool deskAiValidationLocked = false;
   uint8_t deskAiFeedbackThreshold = 48;
   bool competitionDemoMode = false;
   bool energyAwareMode = true;
@@ -290,12 +291,20 @@ struct DeskAiState {
   uint32_t lastOfflineInferenceMs = 0;
   uint16_t inferenceMicros = 0;
   uint16_t quantizedInferenceMicros = 0;
+  uint32_t modelFingerprint = 0;
   uint16_t evaluationTotal = 0;
   uint16_t personalizedCorrect = 0;
   uint16_t baselineCorrect = 0;
   uint16_t quantizedCorrect = 0;
+  uint16_t rejectedPredictions = 0;
   uint16_t evaluationSamples[DeskAiClassCount] = {};
   uint16_t confusion[DeskAiClassCount][DeskAiClassCount] = {};
+  DeskState lastBlindActual = DeskState::Unknown;
+  DeskState lastBlindPersonalized = DeskState::Unknown;
+  DeskState lastBlindBaseline = DeskState::Unknown;
+  DeskState lastBlindQuantized = DeskState::Unknown;
+  float lastBlindConfidence = 0.0f;
+  uint32_t lastBlindResultMs = 0;
   uint8_t profileCoverage = 0;
   uint8_t profileQuality = 0;
   bool profileReady = false;
@@ -340,6 +349,17 @@ struct CompetitionState {
   float estimatedCurrentMa = 0.0f;
   float estimatedPowerW = 0.0f;
   float estimatedEnergyWh = 0.0f;
+  float estimatedBaselinePowerW = 0.0f;
+  float estimatedSavedPowerW = 0.0f;
+  float estimatedEnergySavedWh = 0.0f;
+  uint32_t apiRequestCount = 0;
+  uint32_t externalRequestCount = 0;
+  uint32_t networkBytesReceived = 0;
+  uint32_t wifiDisconnectCount = 0;
+  uint32_t minFreeHeap = 0;
+  uint32_t resetReason = 0;
+  uint16_t displayFps = 0;
+  uint32_t taskStackWatermark[5] = {};
   uint32_t lastUpdateMs = 0;
 };
 

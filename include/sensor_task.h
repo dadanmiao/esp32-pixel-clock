@@ -7,4 +7,4 @@
 #include <Arduino.h>
 
 void startSensorTask();
-
+uint32_t getSensorTaskStackWatermark();

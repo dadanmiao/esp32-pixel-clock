@@ -8,13 +8,25 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_system.h>
 
 #include "app_state.h"
+#include "audio_task.h"
+#include "display_task.h"
+#include "power_manager.h"
+#include "sensor_task.h"
+#include "weather_task.h"
 
 namespace {
 uint32_t lastServiceMs = 0;
 uint32_t lastScreenFrame = 0;
+uint32_t lastFpsSampleMs = 0;
 DeskState previousState = DeskState::Unknown;
+bool wifiWasConnected = false;
+portMUX_TYPE metricsMux = portMUX_INITIALIZER_UNLOCKED;
+uint32_t apiRequestCounter = 0;
+uint32_t externalRequestCounter = 0;
+uint32_t networkBytesReceivedCounter = 0;
 
 uint8_t deskStateIndex(DeskState state) {
   if (state >= DeskState::Focus && state <= DeskState::Away) {
@@ -23,7 +35,7 @@ uint8_t deskStateIndex(DeskState state) {
   return 0xFF;
 }
 
-uint8_t effectiveBrightness(const RenderState &state) {
+uint8_t effectiveBrightness(const RenderState &state, bool includeEnergyAware) {
   uint8_t brightness = state.control.autoBrightness
                            ? state.environment.adaptiveBrightness
                            : state.control.manualBrightness;
@@ -32,13 +44,17 @@ uint8_t effectiveBrightness(const RenderState &state) {
       (state.context.quietHours || state.context.darkEnvironment)) {
     brightness = min(brightness, state.control.nightBrightnessCap);
   }
-  if (state.control.energyAwareMode && state.deskAi.state == DeskState::Away) {
+  if (includeEnergyAware && state.control.energyAwareMode &&
+      state.deskAi.state == DeskState::Away) {
     brightness = min(brightness, static_cast<uint8_t>(4));
   }
   return brightness;
 }
 
-float estimateLedCurrentMa(const RenderState &state, const ScreenSnapshot &screen) {
+float estimateLedCurrentMa(
+    const RenderState &state,
+    const ScreenSnapshot &screen,
+    bool includeEnergyAware) {
   uint32_t rgbSum = 0;
   for (size_t index = 0; index < AppConfig::LedCount; ++index) {
     rgbSum += screen.rgb[index][0];
@@ -47,11 +63,26 @@ float estimateLedCurrentMa(const RenderState &state, const ScreenSnapshot &scree
   }
   const float channelLoad =
       static_cast<float>(rgbSum) / static_cast<float>(AppConfig::LedCount * 3UL * 255UL);
-  const float brightnessScale = static_cast<float>(effectiveBrightness(state)) / 255.0f;
+  const float brightnessScale =
+      static_cast<float>(effectiveBrightness(state, includeEnergyAware)) / 255.0f;
   const float ledCurrent = AppConfig::LedCount * (0.8f + 59.2f * channelLoad * brightnessScale);
   return fminf(ledCurrent, static_cast<float>(state.power.maxMilliamps));
 }
 } // namespace
+
+void recordCompetitionApiRequest(size_t responseBytes) {
+  portENTER_CRITICAL(&metricsMux);
+  ++apiRequestCounter;
+  networkBytesReceivedCounter += static_cast<uint32_t>(responseBytes);
+  portEXIT_CRITICAL(&metricsMux);
+}
+
+void recordCompetitionExternalRequest(size_t responseBytes) {
+  portENTER_CRITICAL(&metricsMux);
+  ++externalRequestCounter;
+  networkBytesReceivedCounter += static_cast<uint32_t>(responseBytes);
+  portEXIT_CRITICAL(&metricsMux);
+}
 
 void serviceCompetitionMetrics() {
   const uint32_t now = millis();
@@ -69,6 +100,11 @@ void serviceCompetitionMetrics() {
   next.localOnly = true;
   next.rawUploadCount = 0;
   next.cloudInferenceCount = 0;
+  portENTER_CRITICAL(&metricsMux);
+  next.apiRequestCount = apiRequestCounter;
+  next.externalRequestCount = externalRequestCounter;
+  next.networkBytesReceived = networkBytesReceivedCounter;
+  portEXIT_CRITICAL(&metricsMux);
 
   const uint8_t currentIndex = deskStateIndex(state.deskAi.state);
   if (elapsedMs > 0 && currentIndex != 0xFF && state.control.deskAiEnabled) {
@@ -114,11 +150,16 @@ void serviceCompetitionMetrics() {
   next.environmentHealthy = state.audio.ldrSampleCount > 0 &&
                             (isfinite(state.environment.temperatureC) ||
                              isfinite(state.environment.humidityRh));
+  const uint32_t frameDelta = screen.frameCounter - lastScreenFrame;
   next.displayHealthy = screen.frameCounter > lastScreenFrame;
   next.powerHealthy = state.power.vbus >= 3.0f && state.power.brightnessCap > 0;
   next.wifiHealthy = WiFi.status() == WL_CONNECTED ||
                      WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA;
-  lastScreenFrame = screen.frameCounter;
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  if (wifiWasConnected && !wifiConnected) {
+    ++next.wifiDisconnectCount;
+  }
+  wifiWasConnected = wifiConnected;
 
   const uint8_t healthyCount =
       static_cast<uint8_t>(next.audioHealthy) +
@@ -129,12 +170,32 @@ void serviceCompetitionMetrics() {
       static_cast<uint8_t>(next.wifiHealthy);
   next.healthScore = static_cast<uint8_t>((healthyCount * 100U) / 6U);
 
-  next.estimatedCurrentMa = estimateLedCurrentMa(state, screen);
+  next.estimatedCurrentMa = estimateLedCurrentMa(state, screen, true);
   next.estimatedPowerW = next.estimatedCurrentMa * 5.0f / 1000.0f;
+  const float baselineCurrentMa = estimateLedCurrentMa(state, screen, false);
+  next.estimatedBaselinePowerW = baselineCurrentMa * 5.0f / 1000.0f;
+  next.estimatedSavedPowerW =
+      fmaxf(0.0f, next.estimatedBaselinePowerW - next.estimatedPowerW);
   if (elapsedMs > 0) {
     next.estimatedEnergyWh +=
         next.estimatedPowerW * static_cast<float>(elapsedMs) / 3600000.0f;
+    next.estimatedEnergySavedWh +=
+        next.estimatedSavedPowerW * static_cast<float>(elapsedMs) / 3600000.0f;
   }
+
+  next.minFreeHeap = ESP.getMinFreeHeap();
+  next.resetReason = static_cast<uint32_t>(esp_reset_reason());
+  if (lastFpsSampleMs != 0 && now > lastFpsSampleMs) {
+    const uint32_t fps = frameDelta * 1000UL / (now - lastFpsSampleMs);
+    next.displayFps = static_cast<uint16_t>(fps > 999 ? 999 : fps);
+  }
+  lastScreenFrame = screen.frameCounter;
+  lastFpsSampleMs = now;
+  next.taskStackWatermark[0] = getAudioTaskStackWatermark();
+  next.taskStackWatermark[1] = getSensorTaskStackWatermark();
+  next.taskStackWatermark[2] = getPowerTaskStackWatermark();
+  next.taskStackWatermark[3] = getWeatherTaskStackWatermark();
+  next.taskStackWatermark[4] = getDisplayTaskStackWatermark();
 
   updateCompetitionState(next);
 }

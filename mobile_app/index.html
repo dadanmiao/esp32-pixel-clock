@@ -517,6 +517,31 @@
             <div><span>原型区分度</span><strong id="aiProfileSeparation">--</strong></div>
           </div>
           <p id="aiProfileHint" class="ai-decision">每种状态至少采集 4 个校准样本后，再开始盲测验证。</p>
+          <div id="aiValidationCard" class="validation-lock-card">
+            <div>
+              <strong id="aiValidationTitle">模型尚未锁定</strong>
+              <p id="aiValidationHint">校准完成后锁定模型。盲测期间不能继续训练，预测结果会在提交真实标签后揭示。</p>
+            </div>
+            <button id="deskAiValidationToggle" type="button">锁定并开始盲测</button>
+          </div>
+          <div class="evidence-chain" aria-label="比赛证据链">
+            <span id="evidenceSensor">传感器</span>
+            <span id="evidenceProfile">画像</span>
+            <span id="evidenceLock">盲测</span>
+            <span id="evidenceOffline">端侧推理</span>
+          </div>
+          <div class="blind-result">
+            <div class="blind-result-heading">
+              <strong>最近一次盲测结果</strong>
+              <span id="aiModelFingerprint" class="mono-pill">模型 --------</span>
+            </div>
+            <div class="evaluation-metrics">
+              <div><span>真实状态</span><strong id="aiBlindActual">--</strong></div>
+              <div><span>个性化模型</span><strong id="aiBlindPersonalized">--</strong></div>
+              <div><span>默认基线</span><strong id="aiBlindBaseline">--</strong></div>
+              <div><span>INT8 模型</span><strong id="aiBlindQuantized">--</strong></div>
+            </div>
+          </div>
           <div class="calibration-heading">
             <h3>个性化校准</h3>
             <p>保持目标状态后点击对应标签；每种状态建议重复 2 至 3 次。</p>
@@ -543,6 +568,7 @@
             <div><span>INT8 量化模型</span><strong id="aiQuantizedAccuracy">--</strong></div>
             <div><span>默认基线</span><strong id="aiBaselineAccuracy">--</strong></div>
             <div><span>真实标注样本</span><strong id="aiEvaluationTotal">0</strong></div>
+            <div><span>低置信拒识</span><strong id="aiRejectedPredictions">0</strong></div>
           </div>
           <p id="aiConfusionHint" class="ai-decision">还没有验证样本。每个类别多采集几次，比较会更公平。</p>
           <p id="aiRecallHint" class="ai-decision">完成首批盲测样本后，这里会显示各状态的召回率。</p>
@@ -662,6 +688,13 @@
             <span id="healthPower">电源 --</span>
             <span id="healthWifi">网络 --</span>
           </div>
+          <div class="reliability-grid">
+            <div><span>显示帧率</span><strong id="displayFps">--</strong></div>
+            <div><span>最低空闲堆</span><strong id="minFreeHeap">--</strong></div>
+            <div><span>网络断连</span><strong id="wifiDisconnectCount">0 次</strong></div>
+            <div><span>复位原因</span><strong id="resetReason">--</strong></div>
+          </div>
+          <p id="taskStackWatermarks" class="ai-decision">任务栈余量：--</p>
         </section>
         <section class="control-panel">
           <div class="training-heading">
@@ -676,12 +709,19 @@
             <div><span>原始数据上传</span><strong id="rawUploadCount">0 次</strong></div>
             <div><span>估算功率</span><strong id="estimatedPower">-- W</strong></div>
             <div><span>累计估算电量</span><strong id="estimatedEnergy">-- Wh</strong></div>
+            <div><span>基线功率</span><strong id="estimatedBaselinePower">-- W</strong></div>
+            <div><span>当前节省</span><strong id="estimatedSavedPower">-- W</strong></div>
+            <div><span>累计节电</span><strong id="estimatedEnergySaved">-- Wh</strong></div>
+            <div><span>App API 请求</span><strong id="apiRequestCount">0 次</strong></div>
+            <div><span>外部联网请求</span><strong id="externalRequestCount">0 次</strong></div>
+            <div><span>接收数据量</span><strong id="networkBytesReceived">0 B</strong></div>
           </div>
           <label class="switch">
             <input id="energyAwareMode" type="checkbox" checked>
             <span></span>
             <b>离开桌面时自动节能</b>
           </label>
+          <button id="exportCompetitionEvidence" class="primary-action" type="button">导出比赛证据包</button>
         </section>
         <section class="wifi-connect-card">
           <h3>设备 Wi-Fi</h3>

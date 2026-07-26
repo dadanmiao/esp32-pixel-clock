@@ -357,3 +357,7 @@ void audioTask(void *) {
 void startAudioTask() {
   xTaskCreatePinnedToCore(audioTask, "audio_fft_core0", 10240, nullptr, 1, &audioTaskHandle, 0);
 }
+
+uint32_t getAudioTaskStackWatermark() {
+  return audioTaskHandle ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(audioTaskHandle)) : 0;
+}

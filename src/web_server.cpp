@@ -15,6 +15,7 @@
 
 #include "app_config.h"
 #include "app_state.h"
+#include "competition_metrics.h"
 #include "desk_ai.h"
 #include "game_logic.h"
 #include "notification_manager.h"
@@ -572,6 +573,7 @@ String buildStateJson() {
   doc["deskAiEnabled"] = state.control.deskAiEnabled;
   doc["deskAiAutoScene"] = state.control.deskAiAutoScene;
   doc["deskAiActiveLearning"] = state.control.deskAiActiveLearning;
+  doc["deskAiValidationLocked"] = state.control.deskAiValidationLocked;
   doc["deskAiFeedbackThreshold"] = state.control.deskAiFeedbackThreshold;
   doc["competitionDemoMode"] = state.control.competitionDemoMode;
   doc["energyAwareMode"] = state.control.energyAwareMode;
@@ -819,6 +821,7 @@ String buildStateJson() {
   deskAi["profileReady"] = state.deskAi.profileReady;
   deskAi["centroidSeparation"] = state.deskAi.centroidSeparation;
   deskAi["activeLearning"] = state.control.deskAiActiveLearning;
+  deskAi["validationLocked"] = state.control.deskAiValidationLocked;
   deskAi["feedbackThreshold"] = state.control.deskAiFeedbackThreshold;
   deskAi["feedbackRequested"] = state.deskAi.feedbackRequested;
   deskAi["feedbackSuggestedState"] = static_cast<uint8_t>(state.deskAi.feedbackSuggestedState);
@@ -827,6 +830,10 @@ String buildStateJson() {
   deskAi["feedbackRequestCount"] = state.deskAi.feedbackRequestCount;
   deskAi["feedbackResolvedCount"] = state.deskAi.feedbackResolvedCount;
   deskAi["demoActive"] = state.deskAi.demoActive;
+  char fingerprint[9] = {};
+  snprintf(fingerprint, sizeof(fingerprint), "%08lX",
+           static_cast<unsigned long>(state.deskAi.modelFingerprint));
+  deskAi["modelFingerprint"] = fingerprint;
   deskAi["minSamplesPerClass"] = AppConfig::DeskAiMinCalibrationSamplesPerClass;
   deskAi["recommendedSamplesPerClass"] = AppConfig::DeskAiRecommendedCalibrationSamplesPerClass;
   JsonArray features = deskAi["features"].to<JsonArray>();
@@ -846,7 +853,19 @@ String buildStateJson() {
   evaluation["personalizedCorrect"] = state.deskAi.personalizedCorrect;
   evaluation["baselineCorrect"] = state.deskAi.baselineCorrect;
   evaluation["quantizedCorrect"] = state.deskAi.quantizedCorrect;
+  evaluation["rejectedPredictions"] = state.deskAi.rejectedPredictions;
   evaluation["lastEvaluationMs"] = state.deskAi.lastEvaluationMs;
+  JsonObject lastBlind = evaluation["lastBlind"].to<JsonObject>();
+  lastBlind["actualState"] = static_cast<uint8_t>(state.deskAi.lastBlindActual);
+  lastBlind["actualLabel"] = deskStateToString(state.deskAi.lastBlindActual);
+  lastBlind["personalizedState"] = static_cast<uint8_t>(state.deskAi.lastBlindPersonalized);
+  lastBlind["personalizedLabel"] = deskStateToString(state.deskAi.lastBlindPersonalized);
+  lastBlind["baselineState"] = static_cast<uint8_t>(state.deskAi.lastBlindBaseline);
+  lastBlind["baselineLabel"] = deskStateToString(state.deskAi.lastBlindBaseline);
+  lastBlind["quantizedState"] = static_cast<uint8_t>(state.deskAi.lastBlindQuantized);
+  lastBlind["quantizedLabel"] = deskStateToString(state.deskAi.lastBlindQuantized);
+  lastBlind["confidence"] = state.deskAi.lastBlindConfidence;
+  lastBlind["recordedMs"] = state.deskAi.lastBlindResultMs;
   JsonArray evaluationSamples = evaluation["samples"].to<JsonArray>();
   for (uint16_t sample : state.deskAi.evaluationSamples) {
     evaluationSamples.add(sample);
@@ -891,6 +910,20 @@ String buildStateJson() {
   competition["estimatedCurrentMa"] = state.competition.estimatedCurrentMa;
   competition["estimatedPowerW"] = state.competition.estimatedPowerW;
   competition["estimatedEnergyWh"] = state.competition.estimatedEnergyWh;
+  competition["estimatedBaselinePowerW"] = state.competition.estimatedBaselinePowerW;
+  competition["estimatedSavedPowerW"] = state.competition.estimatedSavedPowerW;
+  competition["estimatedEnergySavedWh"] = state.competition.estimatedEnergySavedWh;
+  competition["apiRequestCount"] = state.competition.apiRequestCount;
+  competition["externalRequestCount"] = state.competition.externalRequestCount;
+  competition["networkBytesReceived"] = state.competition.networkBytesReceived;
+  competition["wifiDisconnectCount"] = state.competition.wifiDisconnectCount;
+  competition["minFreeHeap"] = state.competition.minFreeHeap;
+  competition["resetReason"] = state.competition.resetReason;
+  competition["displayFps"] = state.competition.displayFps;
+  JsonArray taskStackWatermark = competition["taskStackWatermark"].to<JsonArray>();
+  for (uint32_t watermark : state.competition.taskStackWatermark) {
+    taskStackWatermark.add(watermark);
+  }
   JsonArray stateDurationMs = competition["stateDurationMs"].to<JsonArray>();
   for (uint32_t duration : state.competition.stateDurationMs) {
     stateDurationMs.add(duration);
@@ -912,7 +945,9 @@ String buildStateJson() {
 }
 
 void sendStateJson(AsyncWebServerRequest *request) {
-  request->send(200, "application/json", buildStateJson());
+  const String body = buildStateJson();
+  recordCompetitionApiRequest(body.length());
+  request->send(200, "application/json", body);
 }
 
 void handleRealtimeEvent(
@@ -1151,6 +1186,16 @@ void handleControlBody(AsyncWebServerRequest *request, uint8_t *data, size_t len
     }
     settingsChanged = true;
   }
+  if (doc["deskAiValidationLocked"].is<bool>()) {
+    const bool requested = doc["deskAiValidationLocked"];
+    if (!requested) {
+      state.control.deskAiValidationLocked = false;
+    } else if (state.deskAi.profileReady && !state.control.competitionDemoMode) {
+      state.control.deskAiValidationLocked = true;
+      state.deskAi.feedbackRequested = false;
+      state.deskAi.lowConfidenceSinceMs = 0;
+    }
+  }
   if (doc["deskAiFeedbackThreshold"].is<int>()) {
     state.control.deskAiFeedbackThreshold = static_cast<uint8_t>(
         constrain(doc["deskAiFeedbackThreshold"].as<int>(), 25, 85));
@@ -1158,6 +1203,9 @@ void handleControlBody(AsyncWebServerRequest *request, uint8_t *data, size_t len
   }
   if (doc["competitionDemoMode"].is<bool>()) {
     state.control.competitionDemoMode = doc["competitionDemoMode"];
+    if (state.control.competitionDemoMode) {
+      state.control.deskAiValidationLocked = false;
+    }
     state.deskAi.feedbackRequested = false;
     state.deskAi.lowConfidenceSinceMs = 0;
   }
@@ -1172,14 +1220,15 @@ void handleControlBody(AsyncWebServerRequest *request, uint8_t *data, size_t len
       settingsChanged = true;
     }
   }
-  if (doc["deskAiResetProfile"].is<bool>() && doc["deskAiResetProfile"].as<bool>()) {
+  if (!state.control.deskAiValidationLocked &&
+      doc["deskAiResetProfile"].is<bool>() && doc["deskAiResetProfile"].as<bool>()) {
     resetDeskAiProfile(state.control);
     state.deskAi.lastCalibrationLabel = DeskState::Unknown;
     state.deskAi.lastCalibrationMs = millis();
     refreshDeskAiProfileMetrics(state.control, state.deskAi);
     settingsChanged = true;
   }
-  if (doc["deskAiEvaluationLabel"].is<int>()) {
+  if (state.control.deskAiValidationLocked && doc["deskAiEvaluationLabel"].is<int>()) {
     const int label = constrain(doc["deskAiEvaluationLabel"].as<int>(), 1, 4);
     recordDeskAiEvaluation(state.deskAi, static_cast<DeskState>(label));
   }

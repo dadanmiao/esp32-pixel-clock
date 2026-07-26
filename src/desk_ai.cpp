@@ -26,6 +26,8 @@ float previousAccelY = 0.0f;
 float previousAccelZ = 1.0f;
 uint8_t candidateIndex = 0xFF;
 uint8_t candidateFrames = 0;
+float smoothedFeatures[DeskAiFeatureCount] = {};
+bool smoothedFeaturesReady = false;
 
 struct Classification {
   uint8_t best = 0;
@@ -44,6 +46,21 @@ struct QuantizedClassification {
 
 float clampUnit(float value) {
   return constrain(value, 0.0f, 1.0f);
+}
+
+uint32_t modelFingerprint(const ControlState &control) {
+  uint32_t hash = 2166136261UL;
+  const auto append = [&hash](const uint8_t *bytes, size_t length) {
+    for (size_t index = 0; index < length; ++index) {
+      hash ^= bytes[index];
+      hash *= 16777619UL;
+    }
+  };
+  append(reinterpret_cast<const uint8_t *>(control.deskAiCentroids),
+         sizeof(control.deskAiCentroids));
+  append(reinterpret_cast<const uint8_t *>(control.deskAiSampleCounts),
+         sizeof(control.deskAiSampleCounts));
+  return hash;
 }
 
 uint8_t classIndex(DeskState state) {
@@ -184,6 +201,8 @@ void resetRuntimeClassifier() {
   candidateIndex = 0xFF;
   candidateFrames = 0;
   lastEngagementMs = millis();
+  smoothedFeaturesReady = false;
+  memset(smoothedFeatures, 0, sizeof(smoothedFeatures));
 }
 } // namespace
 
@@ -209,6 +228,9 @@ void resetDeskAiProfile(ControlState &control) {
 }
 
 bool calibrateDeskAiProfile(ControlState &control, DeskAiState &deskAi, DeskState label) {
+  if (control.deskAiValidationLocked) {
+    return false;
+  }
   const uint8_t index = classIndex(label);
   if (index == 0xFF) {
     return false;
@@ -232,14 +254,24 @@ bool recordDeskAiEvaluation(DeskAiState &deskAi, DeskState actualLabel) {
   const uint8_t predicted = classIndex(deskAi.state);
   const uint8_t baseline = classIndex(deskAi.baselineState);
   const uint8_t quantized = classIndex(deskAi.quantizedState);
-  if (actual == 0xFF || predicted == 0xFF || baseline == 0xFF || quantized == 0xFF) {
+  if (actual == 0xFF || baseline == 0xFF || quantized == 0xFF) {
     return false;
   }
+  deskAi.lastBlindActual = actualLabel;
+  deskAi.lastBlindPersonalized = deskAi.state;
+  deskAi.lastBlindBaseline = deskAi.baselineState;
+  deskAi.lastBlindQuantized = deskAi.quantizedState;
+  deskAi.lastBlindConfidence = deskAi.confidence;
+  deskAi.lastBlindResultMs = millis();
   ++deskAi.evaluationTotal;
   ++deskAi.evaluationSamples[actual];
-  ++deskAi.confusion[actual][predicted];
-  if (predicted == actual) {
-    ++deskAi.personalizedCorrect;
+  if (predicted == 0xFF) {
+    ++deskAi.rejectedPredictions;
+  } else {
+    ++deskAi.confusion[actual][predicted];
+    if (predicted == actual) {
+      ++deskAi.personalizedCorrect;
+    }
   }
   if (baseline == actual) {
     ++deskAi.baselineCorrect;
@@ -252,7 +284,8 @@ bool recordDeskAiEvaluation(DeskAiState &deskAi, DeskState actualLabel) {
 }
 
 bool resolveDeskAiFeedback(ControlState &control, DeskAiState &deskAi, DeskState actualLabel) {
-  if (!recordDeskAiEvaluation(deskAi, actualLabel) ||
+  if (control.deskAiValidationLocked ||
+      !recordDeskAiEvaluation(deskAi, actualLabel) ||
       !calibrateDeskAiProfile(control, deskAi, actualLabel)) {
     return false;
   }
@@ -269,8 +302,15 @@ void resetDeskAiEvaluation(DeskAiState &deskAi) {
   deskAi.personalizedCorrect = 0;
   deskAi.baselineCorrect = 0;
   deskAi.quantizedCorrect = 0;
+  deskAi.rejectedPredictions = 0;
   memset(deskAi.evaluationSamples, 0, sizeof(deskAi.evaluationSamples));
   memset(deskAi.confusion, 0, sizeof(deskAi.confusion));
+  deskAi.lastBlindActual = DeskState::Unknown;
+  deskAi.lastBlindPersonalized = DeskState::Unknown;
+  deskAi.lastBlindBaseline = DeskState::Unknown;
+  deskAi.lastBlindQuantized = DeskState::Unknown;
+  deskAi.lastBlindConfidence = 0.0f;
+  deskAi.lastBlindResultMs = 0;
   deskAi.lastEvaluationMs = millis();
 }
 
@@ -313,6 +353,7 @@ void refreshDeskAiProfileMetrics(const ControlState &control, DeskAiState &deskA
       clampUnit(coverageScore * 0.70f + separationScore * 0.30f) * 100.0f + 0.5f);
   deskAi.profileReady = coveredClasses == DeskAiClassCount &&
                         averageSeparation >= AppConfig::DeskAiMinCentroidSeparation;
+  deskAi.modelFingerprint = modelFingerprint(control);
 }
 
 void serviceDeskAi() {
@@ -325,22 +366,33 @@ void serviceDeskAi() {
   const uint32_t startedUs = micros();
   const RenderState state = copySharedState();
   DeskAiState next = state.deskAi;
-  float features[DeskAiFeatureCount] = {};
-  extractFeatures(state, features);
-  memcpy(next.features, features, sizeof(features));
+  float rawFeatures[DeskAiFeatureCount] = {};
+  extractFeatures(state, rawFeatures);
+  if (!smoothedFeaturesReady) {
+    memcpy(smoothedFeatures, rawFeatures, sizeof(smoothedFeatures));
+    smoothedFeaturesReady = true;
+  } else {
+    for (size_t feature = 0; feature < DeskAiFeatureCount; ++feature) {
+      const float alpha = feature == 2 ? 0.72f : 0.38f;
+      smoothedFeatures[feature] =
+          smoothedFeatures[feature] * (1.0f - alpha) + rawFeatures[feature] * alpha;
+    }
+  }
+  memcpy(next.features, smoothedFeatures, sizeof(smoothedFeatures));
 
-  if (features[4] > 0.12f || state.context.audioActive || state.context.motionActive) {
+  if (smoothedFeatures[4] > 0.12f || state.context.audioActive || state.context.motionActive) {
     lastEngagementMs = now;
   }
 
-  Classification personalized = classifyFeatures(features, state.control.deskAiCentroids);
-  Classification baseline = classifyFeatures(features, DefaultCentroids);
+  Classification personalized = classifyFeatures(smoothedFeatures, state.control.deskAiCentroids);
+  Classification baseline = classifyFeatures(smoothedFeatures, DefaultCentroids);
   const uint32_t quantizedStartedUs = micros();
   const QuantizedClassification quantized =
-      classifyFeaturesInt8(features, state.control.deskAiCentroids);
+      classifyFeaturesInt8(smoothedFeatures, state.control.deskAiCentroids);
   const uint32_t quantizedElapsedUs = micros() - quantizedStartedUs;
   uint8_t best = personalized.best;
-  float bestDistance = personalized.bestDistance;
+  bool rejected = personalized.confidence < AppConfig::DeskAiUnknownConfidenceThreshold ||
+                  personalized.bestDistance > AppConfig::DeskAiUnknownDistanceThreshold;
   memcpy(next.classScores, personalized.scores, sizeof(next.classScores));
   next.baselineState = stateForClass(baseline.best);
   next.baselineConfidence = baseline.confidence;
@@ -353,26 +405,29 @@ void serviceDeskAi() {
 
   if (now - lastEngagementMs >= AppConfig::DeskAiAwayTimeoutMs) {
     best = classIndex(DeskState::Away);
-    bestDistance *= 0.65f;
+    rejected = false;
   }
 
   next.confidence = personalized.confidence;
-  const DeskState bestState = stateForClass(best);
+  const DeskState bestState = rejected ? DeskState::Unknown : stateForClass(best);
+  const uint8_t nextCandidate = rejected ? 0xFE : best;
 
   if (!state.control.deskAiEnabled) {
     next.state = DeskState::Unknown;
     candidateIndex = 0xFF;
     candidateFrames = 0;
-  } else if (best == candidateIndex) {
+  } else if (nextCandidate == candidateIndex) {
     candidateFrames = candidateFrames < 8 ? candidateFrames + 1 : 8;
   } else {
-    candidateIndex = best;
+    candidateIndex = nextCandidate;
     candidateFrames = 1;
   }
 
   if (state.control.deskAiEnabled &&
-      (next.state == bestState || candidateFrames >= 3 || next.state == DeskState::Unknown) &&
-      next.confidence >= 0.20f) {
+      (next.state == bestState ||
+       candidateFrames >= AppConfig::DeskAiStateConfirmFrames ||
+       next.state == DeskState::Unknown) &&
+      (bestState == DeskState::Unknown || next.confidence >= 0.20f)) {
     const bool stateChanged = next.state != bestState;
     if (stateChanged) {
       next.stableSinceMs = now;
@@ -383,7 +438,8 @@ void serviceDeskAi() {
   const float feedbackThreshold =
       static_cast<float>(state.control.deskAiFeedbackThreshold) / 100.0f;
   if (!state.control.deskAiEnabled || !state.control.deskAiActiveLearning ||
-      state.control.competitionDemoMode || next.confidence >= feedbackThreshold) {
+      state.control.deskAiValidationLocked || state.control.competitionDemoMode ||
+      next.confidence >= feedbackThreshold) {
     next.lowConfidenceSinceMs = 0;
     if (!state.control.deskAiActiveLearning || state.control.competitionDemoMode) {
       next.feedbackRequested = false;

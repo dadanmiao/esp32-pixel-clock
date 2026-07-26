@@ -166,3 +166,7 @@ void sensorTask(void *) {
 void startSensorTask() {
   xTaskCreatePinnedToCore(sensorTask, "i2c_env_core0", 8192, nullptr, 3, &sensorTaskHandle, 0);
 }
+
+uint32_t getSensorTaskStackWatermark() {
+  return sensorTaskHandle ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(sensorTaskHandle)) : 0;
+}

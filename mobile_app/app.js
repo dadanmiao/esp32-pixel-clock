@@ -6,6 +6,7 @@ const SCENE_REASONS = ["手动场景", "安静时段", "音乐活动", "姿态�
 const DESK_STATES = ["未知", "专注", "会议", "休息", "离开"];
 const CUSTOM_SCENE_STORAGE_KEY = "pixelClock.customScenes.v1";
 const CUSTOM_SCENE_LIMIT = 12;
+const APP_VERSION = "1.8.0";
 
 const qs = (selector, root = document) => root.querySelector(selector);
 const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -55,6 +56,7 @@ function createMockState() {
     deskAiAutoScene: false,
     deskAiActiveLearning: true,
     deskAiFeedbackThreshold: 48,
+    deskAiValidationLocked: false,
     competitionDemoMode: false,
     energyAwareMode: true,
     quietStartHour: 23,
@@ -198,6 +200,8 @@ function createMockState() {
       profileCoverage: 4,
       profileQuality: 78,
       profileReady: true,
+      validationLocked: false,
+      modelFingerprint: "6F21A9C4",
       centroidSeparation: 0.24,
       minSamplesPerClass: 4,
       recommendedSamplesPerClass: 8,
@@ -211,8 +215,21 @@ function createMockState() {
         personalizedCorrect: 7,
         baselineCorrect: 4,
         quantizedCorrect: 7,
+        rejectedPredictions: 0,
         samples: [2, 2, 2, 2],
         confusion: [[2, 0, 0, 0], [0, 2, 0, 0], [0, 1, 1, 0], [0, 0, 0, 1]],
+        lastBlind: {
+          actual: 1,
+          actualLabel: "专注",
+          personalized: 1,
+          personalizedLabel: "专注",
+          baseline: 3,
+          baselineLabel: "休息",
+          quantized: 1,
+          quantizedLabel: "专注",
+          confidence: 0.82,
+          recordedMs: 120000,
+        },
       },
       timeline: [
         [0, 1, 82, false], [30000, 1, 79, false], [60000, 2, 71, false],
@@ -239,6 +256,17 @@ function createMockState() {
       estimatedCurrentMa: 228,
       estimatedPowerW: 1.14,
       estimatedEnergyWh: 0.18,
+      estimatedBaselinePowerW: 1.62,
+      estimatedSavedPowerW: 0.48,
+      estimatedEnergySavedWh: 0.07,
+      apiRequestCount: 32,
+      externalRequestCount: 2,
+      networkBytesReceived: 18432,
+      wifiDisconnectCount: 0,
+      minFreeHeap: 156820,
+      resetReason: 1,
+      displayFps: 60,
+      taskStackWatermark: [1932, 2160, 1244, 3592, 2480],
       stateDurationMs: [48 * 60 * 1000, 8 * 60 * 1000, 15 * 60 * 1000, 5 * 60 * 1000],
     },
     smoothSpectrum: Array.from({ length: 32 }, (_, i) => Math.max(0, Math.sin(i / 4) * 3 + 2)),
@@ -361,6 +389,10 @@ function bindControls() {
   });
   qsa("[data-ai-label]").forEach((button) => {
     button.addEventListener("click", async () => {
+      if (app.state.deskAiValidationLocked) {
+        toast("盲测已锁定，请先结束盲测再校准");
+        return;
+      }
       const ok = await postControl({ deskAiCalibration: Number(button.dataset.aiLabel) });
       if (ok) toast("已保存校准样本");
     });
@@ -374,9 +406,32 @@ function bindControls() {
   ));
   qsa("[data-ai-evaluation]").forEach((button) => {
     button.addEventListener("click", async () => {
+      if (!app.state.deskAiValidationLocked) {
+        toast("请先锁定模型，再提交盲测真实标签");
+        return;
+      }
       const ok = await postControl({ deskAiEvaluationLabel: Number(button.dataset.aiEvaluation) });
-      if (ok) toast("已记录真实标注样本");
+      if (ok) {
+        await refreshState();
+        toast("真实标签已提交，预测结果已揭示");
+      }
     });
+  });
+  byId("deskAiValidationToggle").addEventListener("click", async () => {
+    const locked = Boolean(app.state.deskAiValidationLocked);
+    if (!locked && !app.state.deskAi?.profileReady) {
+      toast("请先完成四类校准并通过训练质量门槛");
+      return;
+    }
+    if (!locked && app.state.deskAi?.demoActive) {
+      toast("盲测必须使用真实传感器，请先关闭排练数据");
+      return;
+    }
+    const ok = await postControl({ deskAiValidationLocked: !locked });
+    if (ok) {
+      await refreshState();
+      toast(locked ? "盲测已结束，可以继续校准" : "模型已锁定，开始独立盲测");
+    }
   });
   byId("deskAiResetEvaluation").addEventListener("click", () => confirmAction(
     "确定重置本次验证及混淆矩阵吗？",
@@ -385,6 +440,7 @@ function bindControls() {
       if (ok) toast("验证记录已重置");
     },
   ));
+  byId("exportCompetitionEvidence").addEventListener("click", exportCompetitionEvidence);
   bindCheckbox("gammaCorrection", (checked) => postControl({ gammaCorrection: checked }));
   bindCheckbox("smoothTransitions", (checked) => postControl({ smoothTransitions: checked }));
   bindSelect("transitionStyle", (value) => postControl({ transitionStyle: Number(value) }));
@@ -737,6 +793,7 @@ function normalizeState(data) {
     deskAiAutoScene: data.deskAiAutoScene ?? data.deskAi?.autoScene ?? app.state.deskAiAutoScene,
     deskAiActiveLearning: data.deskAiActiveLearning ?? data.deskAi?.activeLearning ?? app.state.deskAiActiveLearning,
     deskAiFeedbackThreshold: data.deskAiFeedbackThreshold ?? data.deskAi?.feedbackThreshold ?? app.state.deskAiFeedbackThreshold,
+    deskAiValidationLocked: data.deskAiValidationLocked ?? data.deskAi?.validationLocked ?? app.state.deskAiValidationLocked,
     deskAi: data.deskAi || app.state.deskAi,
     competition: data.competition || app.state.competition,
   };
@@ -844,6 +901,14 @@ function applyLocalControlPatch(patch) {
     s.deskAiFeedbackThreshold = Number(patch.deskAiFeedbackThreshold);
     s.deskAi.feedbackThreshold = s.deskAiFeedbackThreshold;
   }
+  if (patch.deskAiValidationLocked !== undefined) {
+    s.deskAiValidationLocked = Boolean(patch.deskAiValidationLocked);
+    s.deskAi.validationLocked = s.deskAiValidationLocked;
+    if (s.deskAiValidationLocked) {
+      s.deskAiActiveLearning = false;
+      s.deskAi.activeLearning = false;
+    }
+  }
   if (patch.competitionDemoMode !== undefined) {
     s.competitionDemoMode = Boolean(patch.competitionDemoMode);
     s.deskAi.demoActive = s.competitionDemoMode;
@@ -872,6 +937,18 @@ function applyLocalControlPatch(patch) {
     if (actual === predicted) evaluation.personalizedCorrect += 1;
     if (actual === baseline) evaluation.baselineCorrect += 1;
     if (actual === quantized) evaluation.quantizedCorrect = Number(evaluation.quantizedCorrect || 0) + 1;
+    evaluation.lastBlind = {
+      actual: actual + 1,
+      actualLabel: DESK_STATES[actual + 1],
+      personalized: predicted + 1,
+      personalizedLabel: DESK_STATES[predicted + 1],
+      baseline: baseline + 1,
+      baselineLabel: DESK_STATES[baseline + 1],
+      quantized: quantized + 1,
+      quantizedLabel: DESK_STATES[quantized + 1],
+      confidence: Number(s.deskAi.confidence || 0),
+      recordedMs: Number(s.uptimeMs || 0),
+    };
     s.deskAi.evaluation = evaluation;
   }
   if (patch.deskAiFeedbackLabel !== undefined) {
@@ -1278,6 +1355,111 @@ async function exportConfig() {
   URL.revokeObjectURL(url);
 }
 
+async function exportCompetitionEvidence() {
+  const s = app.state;
+  const ai = s.deskAi || {};
+  const evaluation = ai.evaluation || {};
+  const confusion = evaluation.confusion || Array.from({ length: 4 }, () => [0, 0, 0, 0]);
+  const classMetrics = ["专注", "会议", "休息", "离开"].map((label, index) => {
+    const truePositive = Number(confusion[index]?.[index] || 0);
+    const actualTotal = confusion[index]?.reduce((sum, value) => sum + Number(value || 0), 0) || 0;
+    const predictedTotal = confusion.reduce((sum, row) => sum + Number(row?.[index] || 0), 0);
+    const precision = predictedTotal ? truePositive / predictedTotal : 0;
+    const recall = actualTotal ? truePositive / actualTotal : 0;
+    return {
+      label,
+      samples: actualTotal,
+      precision,
+      recall,
+      f1: precision + recall ? (2 * precision * recall) / (precision + recall) : 0,
+    };
+  });
+  const total = Number(evaluation.total || 0);
+  const competition = s.competition || {};
+  const report = {
+    schema: "pixel-flow-competition-evidence/v1",
+    generatedAt: new Date().toISOString(),
+    appVersion: APP_VERSION,
+    firmwareVersion: s.firmwareVersion || s.version || "未知",
+    device: {
+      ip: s.network?.ip || s.ip || "",
+      ssid: s.network?.ssid || s.wifiSsid || "",
+      uptimeMs: Number(s.uptimeMs || 0),
+    },
+    dataSource: ai.demoActive ? "排练数据" : "真实传感器",
+    model: {
+      type: "ESP32-S3 端侧个性化原型分类器",
+      fingerprint: ai.modelFingerprint || "",
+      validationLocked: Boolean(s.deskAiValidationLocked ?? ai.validationLocked),
+      profileCoverage: Number(ai.profileCoverage || 0),
+      profileQuality: Number(ai.profileQuality || 0),
+      centroidSeparation: Number(ai.centroidSeparation || 0),
+      samples: ai.samples || [0, 0, 0, 0],
+      inferenceMicros: Number(ai.inferenceMicros || 0),
+      quantizedInferenceMicros: Number(ai.quantizedInferenceMicros || 0),
+    },
+    blindValidation: {
+      total,
+      personalizedAccuracy: total ? Number(evaluation.personalizedCorrect || 0) / total : 0,
+      baselineAccuracy: total ? Number(evaluation.baselineCorrect || 0) / total : 0,
+      quantizedAccuracy: total ? Number(evaluation.quantizedCorrect || 0) / total : 0,
+      rejectedPredictions: Number(evaluation.rejectedPredictions || 0),
+      confusion,
+      classMetrics,
+      lastBlind: evaluation.lastBlind || null,
+    },
+    reliability: {
+      healthScore: Number(competition.healthScore || 0),
+      displayFps: Number(competition.displayFps || 0),
+      minFreeHeap: Number(competition.minFreeHeap || 0),
+      wifiDisconnectCount: Number(competition.wifiDisconnectCount || 0),
+      resetReason: Number(competition.resetReason || 0),
+      taskStackWatermark: competition.taskStackWatermark || [],
+    },
+    privacyAudit: {
+      localOnly: Boolean(competition.localOnly),
+      cloudInferenceCount: Number(competition.cloudInferenceCount || 0),
+      rawUploadCount: Number(competition.rawUploadCount || 0),
+      appApiRequestCount: Number(competition.apiRequestCount || 0),
+      externalRequestCount: Number(competition.externalRequestCount || 0),
+      networkBytesReceived: Number(competition.networkBytesReceived || 0),
+      externalPurpose: "天气与城市定位",
+    },
+    energyComparison: {
+      currentPowerW: Number(competition.estimatedPowerW || 0),
+      baselinePowerW: Number(competition.estimatedBaselinePowerW || 0),
+      savedPowerW: Number(competition.estimatedSavedPowerW || 0),
+      cumulativeEnergyWh: Number(competition.estimatedEnergyWh || 0),
+      cumulativeSavedEnergyWh: Number(competition.estimatedEnergySavedWh || 0),
+    },
+  };
+  const content = JSON.stringify(report, null, 2);
+  const filename = `PixelFlow-比赛证据-${new Date().toISOString().slice(0, 10)}.json`;
+  const file = new File([content], filename, { type: "application/json" });
+  try {
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ title: "PixelFlow 比赛证据包", files: [file] });
+    } else {
+      downloadBlob(file, filename);
+    }
+    toast("比赛证据包已生成");
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      downloadBlob(file, filename);
+      toast("比赛证据包已保存");
+    }
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function importConfig() {
   const input = document.createElement("input");
   input.type = "file";
@@ -1648,14 +1830,19 @@ function renderStateText() {
   byId("statWeather").textContent = `${formatNumber(s.weather?.temperature, 1)} C`;
   byId("statAudio").textContent = formatNumber(s.rms, 2);
   const ai = s.deskAi || {};
+  const validationLocked = Boolean(s.deskAiValidationLocked ?? ai.validationLocked);
   const aiState = DESK_STATES[ai.state] || ai.label || "未知";
   const aiConfidence = Math.round(clamp(Number(ai.confidence || 0), 0, 1) * 100);
-  byId("homeAiLabel").textContent = aiState;
-  byId("homeAiConfidence").textContent = `${aiConfidence}%`;
-  byId("homeAiReason").textContent = aiExplanation(aiState, ai.features || []);
-  byId("aiLabel").textContent = aiState;
-  byId("aiConfidence").textContent = `${aiConfidence}%`;
-  byId("aiDecision").textContent = ai.demoActive
+  byId("homeAiLabel").textContent = validationLocked ? "盲测进行中" : aiState;
+  byId("homeAiConfidence").textContent = validationLocked ? "已隐藏" : `${aiConfidence}%`;
+  byId("homeAiReason").textContent = validationLocked
+    ? "模型参数已锁定，提交真实标签后才揭示本次预测。"
+    : aiExplanation(aiState, ai.features || []);
+  byId("aiLabel").textContent = validationLocked ? "盲测进行中" : aiState;
+  byId("aiConfidence").textContent = validationLocked ? "已隐藏" : `${aiConfidence}%`;
+  byId("aiDecision").textContent = validationLocked
+    ? "预测结果已封存。请先确认现场真实状态，再点击下方对应标签。"
+    : ai.demoActive
     ? `演示数据正在运行：${aiExplanation(aiState, ai.features || [])}`
     : aiExplanation(aiState, ai.features || []);
   const feedbackPanel = byId("aiFeedbackPanel");
@@ -1681,6 +1868,21 @@ function renderStateText() {
   byId("aiProfileHint").textContent = profileReady
     ? "画像已通过覆盖率和区分度门槛。请固定校准数据，再采集独立盲测标注进行比较。"
     : `每种状态至少采集 ${minSamples} 个样本；建议每种状态 ${recommendedSamples} 个样本，以获得更稳定的个性化画像。`;
+  const validationCard = byId("aiValidationCard");
+  validationCard.classList.toggle("locked", validationLocked);
+  byId("aiValidationTitle").textContent = validationLocked ? "模型已锁定，盲测进行中" : "模型尚未锁定";
+  byId("aiValidationHint").textContent = validationLocked
+    ? "校准和主动学习已冻结。请让评委先确认真实状态，再提交标签揭示预测。"
+    : "校准完成后锁定模型。盲测期间不能继续训练，预测结果会在提交真实标签后揭示。";
+  byId("deskAiValidationToggle").textContent = validationLocked ? "结束盲测并解锁" : "锁定并开始盲测";
+  qsa("[data-ai-label]").forEach((button) => { button.disabled = validationLocked; });
+  byId("deskAiResetProfile").disabled = validationLocked;
+  qsa("[data-ai-evaluation]").forEach((button) => { button.disabled = !validationLocked; });
+  setEvidenceStatus("evidenceSensor", Boolean(s.mpuOnline && s.audioSignalPresent), "传感器");
+  setEvidenceStatus("evidenceProfile", profileReady, "画像");
+  setEvidenceStatus("evidenceLock", validationLocked, "盲测");
+  setEvidenceStatus("evidenceOffline", Boolean(ai.inferenceCount), "端侧推理");
+  byId("aiModelFingerprint").textContent = `模型 ${ai.modelFingerprint || "--------"}`;
   const evaluation = ai.evaluation || {};
   const evaluationTotal = Number(evaluation.total || 0);
   byId("aiPersonalizedAccuracy").textContent = evaluationTotal
@@ -1693,6 +1895,12 @@ function renderStateText() {
     ? `${Math.round((Number(evaluation.baselineCorrect || 0) / evaluationTotal) * 100)}%`
     : "--";
   byId("aiEvaluationTotal").textContent = String(evaluationTotal);
+  byId("aiRejectedPredictions").textContent = String(evaluation.rejectedPredictions || 0);
+  const lastBlind = evaluation.lastBlind || {};
+  byId("aiBlindActual").textContent = lastBlind.actualLabel || DESK_STATES[lastBlind.actualState ?? lastBlind.actual] || "--";
+  byId("aiBlindPersonalized").textContent = lastBlind.personalizedLabel || DESK_STATES[lastBlind.personalizedState ?? lastBlind.personalized] || "--";
+  byId("aiBlindBaseline").textContent = lastBlind.baselineLabel || DESK_STATES[lastBlind.baselineState ?? lastBlind.baseline] || "--";
+  byId("aiBlindQuantized").textContent = lastBlind.quantizedLabel || DESK_STATES[lastBlind.quantizedState ?? lastBlind.quantized] || "--";
   byId("aiConfusionHint").textContent = evaluationTotal
     ? `混淆矩阵：行是真实状态，列是设备预测。专注 ${evaluation.samples?.[0] ?? 0}、会议 ${evaluation.samples?.[1] ?? 0}、休息 ${evaluation.samples?.[2] ?? 0}、离开 ${evaluation.samples?.[3] ?? 0}。`
     : "还没有验证样本。每个类别多采集几次，比较会更公平。";
@@ -1742,6 +1950,19 @@ function renderStateText() {
   byId("rawUploadCount").textContent = `${competition.rawUploadCount || 0} 次`;
   byId("estimatedPower").textContent = `${formatNumber(competition.estimatedPowerW, 2)} W`;
   byId("estimatedEnergy").textContent = `${formatNumber(competition.estimatedEnergyWh, 3)} Wh`;
+  byId("estimatedBaselinePower").textContent = `${formatNumber(competition.estimatedBaselinePowerW, 2)} W`;
+  byId("estimatedSavedPower").textContent = `${formatNumber(competition.estimatedSavedPowerW, 2)} W`;
+  byId("estimatedEnergySaved").textContent = `${formatNumber(competition.estimatedEnergySavedWh, 3)} Wh`;
+  byId("apiRequestCount").textContent = `${competition.apiRequestCount || 0} 次`;
+  byId("externalRequestCount").textContent = `${competition.externalRequestCount || 0} 次`;
+  byId("networkBytesReceived").textContent = formatBytes(competition.networkBytesReceived || 0);
+  byId("displayFps").textContent = `${competition.displayFps || 0} FPS`;
+  byId("minFreeHeap").textContent = formatBytes(competition.minFreeHeap || 0);
+  byId("wifiDisconnectCount").textContent = `${competition.wifiDisconnectCount || 0} 次`;
+  byId("resetReason").textContent = resetReasonLabel(competition.resetReason);
+  const stack = competition.taskStackWatermark || [];
+  byId("taskStackWatermarks").textContent =
+    `任务栈余量：音频 ${stack[0] ?? "--"} / 传感 ${stack[1] ?? "--"} / 电源 ${stack[2] ?? "--"} / 天气 ${stack[3] ?? "--"} / 显示 ${stack[4] ?? "--"}`;
   byId("lowMeter").style.transform = `scaleX(${clamp(s.audioLowEnergy || 0, 0.03, 1)})`;
   byId("midMeter").style.transform = `scaleX(${clamp(s.audioMidEnergy || 0, 0.03, 1)})`;
   byId("highMeter").style.transform = `scaleX(${clamp(s.audioHighEnergy || 0, 0.03, 1)})`;
@@ -1767,6 +1988,7 @@ function renderControls() {
   setChecked("deskAiEnabled", s.deskAiEnabled);
   setChecked("deskAiAutoScene", s.deskAiAutoScene);
   setChecked("deskAiActiveLearning", s.deskAiActiveLearning);
+  byId("deskAiActiveLearning").disabled = Boolean(s.deskAiValidationLocked);
   setChecked("competitionDemoMode", s.competitionDemoMode);
   setChecked("energyAwareMode", s.energyAwareMode);
   setValue("deskAiFeedbackThreshold", s.deskAiFeedbackThreshold);
@@ -1857,6 +2079,34 @@ function formatTimerText() {
 function formatNumber(value, digits = 1) {
   if (value === undefined || value === null || Number.isNaN(Number(value))) return "--";
   return Number(value).toFixed(digits);
+}
+
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function resetReasonLabel(reason) {
+  const labels = {
+    0: "未知",
+    1: "正常上电",
+    3: "软件复位",
+    4: "异常崩溃",
+    5: "中断看门狗",
+    6: "任务看门狗",
+    7: "其他看门狗",
+    8: "深度睡眠唤醒",
+    12: "欠压复位",
+  };
+  return labels[Number(reason)] || `代码 ${reason ?? "--"}`;
+}
+
+function setEvidenceStatus(id, ok, label) {
+  const element = byId(id);
+  element.textContent = `${label} ${ok ? "通过" : "待完成"}`;
+  element.classList.toggle("ok", Boolean(ok));
 }
 
 function renderHealthItem(id, label, healthy) {

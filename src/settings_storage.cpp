@@ -196,6 +196,7 @@ void loadSettingsFromNvs(ControlState &control) {
   control.deskAiEnabled = prefs.getBool("aiOn", control.deskAiEnabled);
   control.deskAiAutoScene = prefs.getBool("aiAuto", control.deskAiAutoScene);
   control.deskAiActiveLearning = prefs.getBool("aiLearn", control.deskAiActiveLearning);
+  control.deskAiValidationLocked = false;
   control.deskAiFeedbackThreshold = clampU8(
       prefs.getUChar("aiFeed", control.deskAiFeedbackThreshold), 25, 85);
   control.energyAwareMode = prefs.getBool("energy", control.energyAwareMode);

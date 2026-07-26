@@ -83,6 +83,10 @@ void startPowerTask() {
   xTaskCreatePinnedToCore(powerTask, "power_core0", 8192, nullptr, 4, &powerTaskHandle, 0);
 }
 
+uint32_t getPowerTaskStackWatermark() {
+  return powerTaskHandle ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(powerTaskHandle)) : 0;
+}
+
 void markSystemFullyStarted() {
   systemStartedAtMs = millis() - AppConfig::DcdcEnableDelayMs;
   systemFullyStarted = true;

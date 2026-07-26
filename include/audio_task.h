@@ -7,4 +7,4 @@
 #include <Arduino.h>
 
 void startAudioTask();
-
+uint32_t getAudioTaskStackWatermark();

@@ -1546,3 +1546,7 @@ void displayTask(void *) {
 void startDisplayTask() {
   xTaskCreatePinnedToCore(displayTask, "fastled_render_core1", 12288, nullptr, 4, &displayTaskHandle, 1);
 }
+
+uint32_t getDisplayTaskStackWatermark() {
+  return displayTaskHandle ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(displayTaskHandle)) : 0;
+}
