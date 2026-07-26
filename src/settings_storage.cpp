@@ -11,7 +11,7 @@
 
 namespace {
 constexpr const char *NvsNamespace = "pxclock";
-constexpr uint32_t SettingsVersion = 3;
+constexpr uint32_t SettingsVersion = 4;
 constexpr uint32_t SaveDelayMs = 1500;
 
 portMUX_TYPE saveMux = portMUX_INITIALIZER_UNLOCKED;
@@ -98,8 +98,8 @@ void copyStoredText(char *dest, const String &src) {
 void copyStoredCity(char *dest, const String &src) {
   size_t out = 0;
   while (out < WeatherCityMaxLen - 1 && out < src.length()) {
-    const char c = src[out];
-    dest[out] = (c >= 0x20 && c <= 0x7E) ? c : ' ';
+    const uint8_t c = static_cast<uint8_t>(src[out]);
+    dest[out] = c >= 0x20 ? static_cast<char>(c) : ' ';
     ++out;
   }
   dest[out] = '\0';
@@ -144,7 +144,7 @@ void loadSettingsFromNvs(ControlState &control) {
   }
 
   const uint32_t version = prefs.getUInt("ver", 0);
-  if (version != 1 && version != 2 && version != SettingsVersion) {
+  if (version != 1 && version != 2 && version != 3 && version != SettingsVersion) {
     prefs.end();
     Serial.println("[NVS] no valid settings, using defaults");
     return;
@@ -211,6 +211,7 @@ void loadSettingsFromNvs(ControlState &control) {
   copyStoredCity(control.weatherCity, prefs.getString("wCity", String(control.weatherCity)));
   control.weatherLatitude = constrain(prefs.getFloat("wLat", control.weatherLatitude), -90.0f, 90.0f);
   control.weatherLongitude = constrain(prefs.getFloat("wLon", control.weatherLongitude), -180.0f, 180.0f);
+  control.weatherAutoLocate = prefs.getBool("wGeo", control.weatherAutoLocate);
   control.weatherUpdateIntervalMin = clampU16(prefs.getUShort("wInt", control.weatherUpdateIntervalMin), 5, 180);
 
   control.gameType = safeGameType(prefs.getUChar("gameType", static_cast<uint8_t>(control.gameType)), control.gameType);
@@ -281,6 +282,7 @@ void saveSettingsToNvs(const ControlState &control) {
   prefs.putString("wCity", control.weatherCity);
   prefs.putFloat("wLat", control.weatherLatitude);
   prefs.putFloat("wLon", control.weatherLongitude);
+  prefs.putBool("wGeo", control.weatherAutoLocate);
   prefs.putUShort("wInt", clampU16(control.weatherUpdateIntervalMin, 5, 180));
 
   prefs.putUChar("gameType", static_cast<uint8_t>(control.gameType));

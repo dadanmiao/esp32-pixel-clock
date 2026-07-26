@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f7f8f7">
-  <title>Pixel Clock Mobile</title>
+  <title>像素时钟</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -13,7 +13,7 @@
     <header class="topbar">
       <div>
         <div class="eyebrow">ESP32-S3</div>
-        <h1>Pixel Clock</h1>
+        <h1>像素时钟</h1>
       </div>
       <div class="top-actions">
         <button class="icon-button" id="refreshBtn" title="刷新状态" aria-label="刷新状态">
@@ -31,12 +31,12 @@
           <div class="connection-row">
             <div>
               <span id="connDot" class="status-dot"></span>
-              <span id="connText" class="status-text">Mock 模式</span>
+              <span id="connText" class="status-text">演示模式</span>
             </div>
             <label class="switch small-switch">
               <input id="mockMode" type="checkbox" checked>
               <span></span>
-              <b>Mock</b>
+              <b>演示</b>
             </label>
           </div>
           <div class="connect-form">
@@ -49,8 +49,8 @@
         <section class="matrix-panel">
           <div class="section-head">
             <div>
-              <span class="section-kicker">LiveView</span>
-              <h2 id="modeTitle">Clock</h2>
+              <span class="section-kicker">实时预览</span>
+              <h2 id="modeTitle">时钟</h2>
             </div>
             <span id="clockText" class="mono-pill">--:--:--</span>
           </div>
@@ -76,11 +76,11 @@
           </article>
         </section>
 
-        <section class="ai-summary" aria-label="Edge AI desk state">
+        <section class="ai-summary" aria-label="端侧 AI 桌面状态">
           <div>
-            <span class="section-kicker">On-device desk AI</span>
-            <h2 id="homeAiLabel">Analyzing</h2>
-            <p id="homeAiReason">Local sensor fusion is preparing a desk-state explanation.</p>
+            <span class="section-kicker">端侧桌面 AI</span>
+            <h2 id="homeAiLabel">分析中</h2>
+            <p id="homeAiReason">正在结合本地传感器生成桌面状态说明。</p>
           </div>
           <strong id="homeAiConfidence">--%</strong>
         </section>
@@ -88,7 +88,7 @@
         <section>
           <div class="section-head compact-head">
             <div>
-              <span class="section-kicker">Modes</span>
+              <span class="section-kicker">显示模式</span>
               <h2>快速切换</h2>
             </div>
           </div>
@@ -119,20 +119,20 @@
           <button class="segment" data-panel="timer">计时</button>
           <button class="segment" data-panel="weather">天气</button>
           <button class="segment" data-panel="game">游戏</button>
-          <button class="segment" data-panel="ai">Desk AI</button>
+          <button class="segment" data-panel="ai">桌面 AI</button>
         </div>
 
         <section class="control-panel active" id="panel-display">
           <label class="field">
             <span>显示模式</span>
             <select id="modeSelect">
-              <option value="0">Clock</option>
-              <option value="1">Spectrum</option>
-              <option value="2">Fluid</option>
-              <option value="3">Text</option>
-              <option value="4">Timer</option>
-              <option value="5">Weather</option>
-              <option value="6">Game</option>
+              <option value="0">时钟</option>
+              <option value="1">频谱</option>
+              <option value="2">流体</option>
+              <option value="3">文字</option>
+              <option value="4">计时</option>
+              <option value="5">天气</option>
+              <option value="6">游戏</option>
             </select>
           </label>
           <label class="field">
@@ -219,19 +219,19 @@
           <label class="field">
             <span>时钟主题</span>
             <select id="clockTheme">
-              <option value="0">Classic</option>
-              <option value="1">Rainbow</option>
-              <option value="2">Breath</option>
-              <option value="3">Night</option>
-              <option value="4">Minimal</option>
+              <option value="0">经典</option>
+              <option value="1">彩虹</option>
+              <option value="2">呼吸</option>
+              <option value="3">夜间</option>
+              <option value="4">极简</option>
             </select>
           </label>
           <div class="tile-list">
-            <button class="tile-button" data-clock-theme="0">Classic</button>
-            <button class="tile-button" data-clock-theme="1">Rainbow</button>
-            <button class="tile-button" data-clock-theme="2">Breath</button>
-            <button class="tile-button" data-clock-theme="3">Night</button>
-            <button class="tile-button" data-clock-theme="4">Minimal</button>
+            <button class="tile-button" data-clock-theme="0">经典</button>
+            <button class="tile-button" data-clock-theme="1">彩虹</button>
+            <button class="tile-button" data-clock-theme="2">呼吸</button>
+            <button class="tile-button" data-clock-theme="3">夜间</button>
+            <button class="tile-button" data-clock-theme="4">极简</button>
           </div>
         </section>
 
@@ -239,12 +239,12 @@
           <label class="field">
             <span>律动模式</span>
             <select id="audioVisualMode">
-              <option value="0">Normal Spectrum</option>
-              <option value="1">Mirror Spectrum</option>
-              <option value="2">VU Meter</option>
-              <option value="3">Bass Pulse</option>
-              <option value="4">Fire Spectrum</option>
-              <option value="5">Center Burst</option>
+              <option value="0">普通频谱</option>
+              <option value="1">镜像频谱</option>
+              <option value="2">音量表</option>
+              <option value="3">低频脉冲</option>
+              <option value="4">火焰频谱</option>
+              <option value="5">中心扩散</option>
             </select>
           </label>
           <label class="field">
@@ -273,9 +273,9 @@
             </label>
           </div>
           <div class="meter-stack">
-            <div><span>Low</span><i id="lowMeter"></i></div>
-            <div><span>Mid</span><i id="midMeter"></i></div>
-            <div><span>High</span><i id="highMeter"></i></div>
+            <div><span>低频</span><i id="lowMeter"></i></div>
+            <div><span>中频</span><i id="midMeter"></i></div>
+            <div><span>高频</span><i id="highMeter"></i></div>
           </div>
         </section>
 
@@ -317,10 +317,10 @@
             <b>彩虹文字</b>
           </label>
           <div class="phrase-row">
-            <button data-phrase="FOCUS TIME">FOCUS</button>
-            <button data-phrase="GOOD NIGHT">NIGHT</button>
-            <button data-phrase="RAIN TODAY">RAIN</button>
-            <button data-phrase="TIME UP">TIME UP</button>
+            <button data-phrase="FOCUS TIME">专注</button>
+            <button data-phrase="GOOD NIGHT">晚安</button>
+            <button data-phrase="RAIN TODAY">下雨</button>
+            <button data-phrase="TIME UP">时间到</button>
           </div>
           <div class="action-row text-actions">
             <button id="sendTextBtn" class="primary-button">切换到文字</button>
@@ -332,9 +332,9 @@
           <label class="field">
             <span>计时类型</span>
             <select id="timerMode">
-              <option value="0">Pomodoro</option>
-              <option value="1">Countdown</option>
-              <option value="2">Stopwatch</option>
+              <option value="0">番茄钟</option>
+              <option value="1">倒计时</option>
+              <option value="2">秒表</option>
             </select>
           </label>
           <div class="threshold-grid">
@@ -353,10 +353,10 @@
           </label>
           <div class="timer-display" id="timerDisplay">25:00</div>
           <div class="action-row">
-            <button data-timer-action="start">Start</button>
-            <button data-timer-action="pause">Pause</button>
-            <button data-timer-action="resume">Resume</button>
-            <button data-timer-action="reset">Reset</button>
+            <button data-timer-action="start">开始</button>
+            <button data-timer-action="pause">暂停</button>
+            <button data-timer-action="resume">继续</button>
+            <button data-timer-action="reset">重置</button>
           </div>
         </section>
 
@@ -368,8 +368,14 @@
           </label>
           <label class="field">
             <span>城市</span>
-            <input id="weatherCity" maxlength="31" value="Lanzhou">
+            <input id="weatherCity" maxlength="47" value="兰州" placeholder="例如：兰州、北京、Shanghai">
           </label>
+          <label class="switch">
+            <input id="weatherAutoLocate" type="checkbox" checked>
+            <span></span>
+            <b>按城市自动定位</b>
+          </label>
+          <div class="micro-status">修改城市后会自动查询经纬度并刷新天气；手动改坐标会切换为手动定位。</div>
           <div class="threshold-grid">
             <label class="field">
               <span>纬度</span>
@@ -387,9 +393,9 @@
           <label class="field">
             <span>显示样式</span>
             <select id="weatherDisplayMode">
-              <option value="0">Icon + Temp</option>
-              <option value="1">Temp Only</option>
-              <option value="2">Detail Cycle</option>
+              <option value="0">图标与温度</option>
+              <option value="1">仅温度</option>
+              <option value="2">详情轮播</option>
             </select>
           </label>
           <div class="weather-now">
@@ -406,11 +412,11 @@
           <label class="field">
             <span>游戏</span>
             <select id="gameType">
-              <option value="0">Snake</option>
-              <option value="1">Gravity Ball</option>
-              <option value="2">Reaction</option>
-              <option value="3">Pong</option>
-              <option value="4">Breakout</option>
+              <option value="0">贪吃蛇</option>
+              <option value="1">重力球</option>
+              <option value="2">反应测试</option>
+              <option value="3">弹球</option>
+              <option value="4">打砖块</option>
             </select>
           </label>
           <label class="field">
@@ -423,104 +429,104 @@
             <b>MPU 控制</b>
           </label>
           <div class="game-score">
-            <span>Score <b id="gameScore">0</b></span>
-            <span>Best <b id="gameBest">0</b></span>
+            <span>得分 <b id="gameScore">0</b></span>
+            <span>最高分 <b id="gameBest">0</b></span>
           </div>
           <div class="dpad">
-            <button data-direction="up">U</button>
-            <button data-direction="left">L</button>
-            <button data-direction="right">R</button>
-            <button data-direction="down">D</button>
+            <button data-direction="up" aria-label="向上">↑</button>
+            <button data-direction="left" aria-label="向左">←</button>
+            <button data-direction="right" aria-label="向右">→</button>
+            <button data-direction="down" aria-label="向下">↓</button>
           </div>
           <div class="action-row">
-            <button data-game-action="start">Start</button>
-            <button data-game-action="toggle">Toggle</button>
-            <button data-game-action="reset">Reset</button>
+            <button data-game-action="start">开始</button>
+            <button data-game-action="toggle">暂停/继续</button>
+            <button data-game-action="reset">重置</button>
           </div>
         </section>
 
         <section class="control-panel" id="panel-ai">
           <div class="ai-panel-heading">
             <div>
-              <span class="section-kicker">Explainable local model</span>
-              <h3 id="aiLabel">Analyzing</h3>
+              <span class="section-kicker">可解释端侧模型</span>
+              <h3 id="aiLabel">分析中</h3>
             </div>
             <span id="aiConfidence" class="mono-pill">--%</span>
           </div>
-          <p id="aiDecision" class="ai-decision">The classifier runs on the ESP32-S3 and does not upload microphone or motion data.</p>
+          <p id="aiDecision" class="ai-decision">分类器运行在 ESP32-S3 本地，不会上传麦克风或姿态数据。</p>
           <div class="two-switches">
             <label class="switch">
               <input id="deskAiEnabled" type="checkbox" checked>
               <span></span>
-              <b>Enable local classification</b>
+              <b>启用本地分类</b>
             </label>
             <label class="switch">
               <input id="deskAiAutoScene" type="checkbox">
               <span></span>
-              <b>Let AI choose ambient display</b>
+              <b>让 AI 自动选择显示场景</b>
             </label>
           </div>
           <div class="ai-feature-list">
-            <div><span>Audio activity</span><i id="aiFeatureAudio"></i><b id="aiFeatureAudioValue">--</b></div>
-            <div><span>Low frequency</span><i id="aiFeatureBass"></i><b id="aiFeatureBassValue">--</b></div>
-            <div><span>Motion change</span><i id="aiFeatureMotion"></i><b id="aiFeatureMotionValue">--</b></div>
-            <div><span>Ambient light</span><i id="aiFeatureLight"></i><b id="aiFeatureLightValue">--</b></div>
-            <div><span>Engagement</span><i id="aiFeatureEngagement"></i><b id="aiFeatureEngagementValue">--</b></div>
+            <div><span>音频活跃度</span><i id="aiFeatureAudio"></i><b id="aiFeatureAudioValue">--</b></div>
+            <div><span>低频能量</span><i id="aiFeatureBass"></i><b id="aiFeatureBassValue">--</b></div>
+            <div><span>姿态变化</span><i id="aiFeatureMotion"></i><b id="aiFeatureMotionValue">--</b></div>
+            <div><span>环境光</span><i id="aiFeatureLight"></i><b id="aiFeatureLightValue">--</b></div>
+            <div><span>使用活跃度</span><i id="aiFeatureEngagement"></i><b id="aiFeatureEngagementValue">--</b></div>
           </div>
           <div class="ai-meta">
             <span id="aiInference">--</span>
-            <span id="aiSamples">No samples</span>
+            <span id="aiSamples">暂无样本</span>
           </div>
           <div class="training-heading">
             <div>
-              <h3>Training quality gate</h3>
-              <p>Calibrate each state before validation. Ground-truth validation never updates the local model.</p>
+              <h3>训练质量门槛</h3>
+              <p>请先校准每种状态，再开始验证；验证标注不会改变本地模型。</p>
             </div>
-            <span id="aiProfileStatus" class="mono-pill">Collecting</span>
+            <span id="aiProfileStatus" class="mono-pill">采集中</span>
           </div>
           <div class="evaluation-metrics training-metrics">
-            <div><span>Class coverage</span><strong id="aiProfileCoverage">0 / 4</strong></div>
-            <div><span>Profile quality</span><strong id="aiProfileQuality">0%</strong></div>
-            <div><span>Prototype separation</span><strong id="aiProfileSeparation">--</strong></div>
+            <div><span>类别覆盖</span><strong id="aiProfileCoverage">0 / 4</strong></div>
+            <div><span>画像质量</span><strong id="aiProfileQuality">0%</strong></div>
+            <div><span>原型区分度</span><strong id="aiProfileSeparation">--</strong></div>
           </div>
-          <p id="aiProfileHint" class="ai-decision">Collect at least four calibration samples for every state before starting a blind validation run.</p>
+          <p id="aiProfileHint" class="ai-decision">每种状态至少采集 4 个校准样本后，再开始盲测验证。</p>
           <div class="calibration-heading">
-            <h3>Personal calibration</h3>
-            <p>Stay in the target state, then tap its label. Repeat 2-3 times for each state.</p>
+            <h3>个性化校准</h3>
+            <p>保持目标状态后点击对应标签；每种状态建议重复 2 至 3 次。</p>
           </div>
           <div class="calibration-grid">
-            <button data-ai-label="1">I am focusing</button>
-            <button data-ai-label="2">I am in a meeting</button>
-            <button data-ai-label="3">I am resting</button>
-            <button data-ai-label="4">Desk is empty</button>
+            <button data-ai-label="1">我在专注</button>
+            <button data-ai-label="2">我在会议</button>
+            <button data-ai-label="3">我在休息</button>
+            <button data-ai-label="4">桌面无人</button>
           </div>
-          <button id="deskAiResetProfile" class="soft-button ai-reset">Reset calibration profile</button>
+          <button id="deskAiResetProfile" class="soft-button ai-reset">重置校准画像</button>
           <div class="evaluation-heading">
-            <h3>Validation evidence</h3>
-            <p>Choose the actual desk state. The device records its prediction against this ground-truth label.</p>
+            <h3>验证记录</h3>
+            <p>选择当前真实状态，设备会记录预测结果与真实标注的对比。</p>
           </div>
           <div class="calibration-grid">
-            <button data-ai-evaluation="1">Mark actual Focus</button>
-            <button data-ai-evaluation="2">Mark actual Meeting</button>
-            <button data-ai-evaluation="3">Mark actual Rest</button>
-            <button data-ai-evaluation="4">Mark actual Away</button>
+            <button data-ai-evaluation="1">标注为专注</button>
+            <button data-ai-evaluation="2">标注为会议</button>
+            <button data-ai-evaluation="3">标注为休息</button>
+            <button data-ai-evaluation="4">标注为离开</button>
           </div>
           <div class="evaluation-metrics">
-            <div><span>Personalized</span><strong id="aiPersonalizedAccuracy">--</strong></div>
-            <div><span>Default baseline</span><strong id="aiBaselineAccuracy">--</strong></div>
-            <div><span>Ground-truth samples</span><strong id="aiEvaluationTotal">0</strong></div>
+            <div><span>个性化准确率</span><strong id="aiPersonalizedAccuracy">--</strong></div>
+            <div><span>默认基线</span><strong id="aiBaselineAccuracy">--</strong></div>
+            <div><span>真实标注样本</span><strong id="aiEvaluationTotal">0</strong></div>
           </div>
-          <p id="aiConfusionHint" class="ai-decision">No validation samples yet. Collect each class several times for a fair comparison.</p>
-          <p id="aiRecallHint" class="ai-decision">Per-state recall will appear after the first blind validation samples.</p>
-          <button id="deskAiResetEvaluation" class="soft-button ai-reset">Reset validation run</button>
+          <p id="aiConfusionHint" class="ai-decision">还没有验证样本。每个类别多采集几次，比较会更公平。</p>
+          <p id="aiRecallHint" class="ai-decision">完成首批盲测样本后，这里会显示各状态的召回率。</p>
+          <button id="deskAiResetEvaluation" class="soft-button ai-reset">重置验证记录</button>
           <div class="timeline-heading">
             <div>
-              <h3>State timeline</h3>
-              <p>One point every 30 seconds, plus every state change.</p>
+              <h3>状态时间线</h3>
+              <p>每 30 秒记录一个点，状态改变时也会记录。</p>
             </div>
-            <span id="aiOfflineProof" class="mono-pill">Offline proof: --</span>
+            <span id="aiOfflineProof" class="mono-pill">离线推理：--</span>
           </div>
-          <div id="aiTimeline" class="ai-timeline" aria-label="Desk state timeline"></div>
+          <div id="aiTimeline" class="ai-timeline" aria-label="桌面状态时间线"></div>
         </section>
       </section>
 
@@ -533,7 +539,7 @@
           <button class="scene-card" data-preset="desk">
             <span class="scene-mark desk"></span>
             <strong>桌面时钟</strong>
-            <small>Classic / 自动亮度</small>
+            <small>经典主题 / 自动亮度</small>
           </button>
           <button class="scene-card" data-preset="night">
             <span class="scene-mark night"></span>
@@ -543,7 +549,7 @@
           <button class="scene-card" data-preset="music">
             <span class="scene-mark music"></span>
             <strong>音乐律动</strong>
-            <small>Bass Pulse / Rainbow</small>
+            <small>低频脉冲 / 彩虹色</small>
           </button>
           <button class="scene-card" data-preset="fluid">
             <span class="scene-mark fluid"></span>
@@ -563,7 +569,7 @@
           <button class="scene-card" data-preset="game">
             <span class="scene-mark game"></span>
             <strong>像素游戏</strong>
-            <small>Snake / Web 控制</small>
+            <small>贪吃蛇 / 网页控制</small>
           </button>
         </div>
         <section class="custom-scenes-panel">
@@ -595,9 +601,22 @@
           <div><span>SSID</span><strong id="deviceSsid">--</strong></div>
           <div><span>RSSI</span><strong id="deviceRssi">--</strong></div>
           <div><span>电源模式</span><strong id="devicePower">--</strong></div>
-          <div><span>DC-DC</span><strong id="deviceDcdc">--</strong></div>
+          <div><span>DC-DC 电源</span><strong id="deviceDcdc">--</strong></div>
           <div><span>堆内存</span><strong id="deviceHeap">--</strong></div>
           <div><span>运行时间</span><strong id="deviceUptime">--</strong></div>
+        </section>
+        <section class="wifi-connect-card">
+          <h3>设备 Wi-Fi</h3>
+          <p>先连接 PixelClock-Setup，再在此处让开发板加入同一局域网。</p>
+          <label class="field">
+            <span>Wi-Fi 名称</span>
+            <input id="wifiSsidInput" type="text" autocomplete="off" placeholder="例如 ZTE-2.4G-A06C1E">
+          </label>
+          <label class="field">
+            <span>Wi-Fi 密码</span>
+            <input id="wifiPasswordInput" type="password" autocomplete="current-password" placeholder="输入密码">
+          </label>
+          <button id="wifiConnectBtn" class="primary-button">让设备连接 Wi-Fi</button>
         </section>
         <section class="device-actions">
           <button id="saveSettingsBtn">保存设置</button>
@@ -607,7 +626,7 @@
           <button id="wifiResetBtn" class="danger-button">清除 Wi-Fi</button>
           <button id="rebootBtn" class="danger-button">重启设备</button>
         </section>
-        <pre id="deviceLog" class="log-panel">ready</pre>
+        <pre id="deviceLog" class="log-panel">就绪</pre>
       </section>
 
       <section id="page-settings" class="page" data-page="settings">
@@ -619,11 +638,11 @@
           <input id="settingsApiBase" type="url" value="http://pixel-fluid-clock.local">
         </label>
         <label class="field">
-          <span>轮询间隔 ms</span>
+          <span>轮询间隔（毫秒）</span>
           <input id="pollInterval" type="number" min="300" max="5000" value="900">
         </label>
         <label class="field">
-          <span>访问 Token</span>
+          <span>访问令牌</span>
           <input id="authToken" type="password" autocomplete="off" placeholder="预留">
         </label>
         <label class="switch">
@@ -632,7 +651,7 @@
           <b>失败时保持模拟状态</b>
         </label>
         <section class="api-map">
-          <h3>接口映射</h3>
+          <h3>接口列表</h3>
           <code>GET /api/state</code>
           <code>POST /api/control</code>
           <code>GET /api/screen</code>

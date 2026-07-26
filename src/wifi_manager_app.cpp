@@ -5,6 +5,7 @@
 #include "wifi_manager_app.h"
 
 #include <ArduinoJson.h>
+#include <ESPmDNS.h>
 #include <Preferences.h>
 #include <WiFi.h>
 #include <time.h>
@@ -22,6 +23,7 @@ String savedPassword;
 bool hasSavedCredentials = false;
 bool setupApActive = false;
 bool timeConfigured = false;
+bool mdnsStarted = false;
 bool lastConnected = false;
 uint32_t lastReconnectAttemptMs = 0;
 
@@ -127,6 +129,19 @@ void configureTimeIfConnected() {
   timeConfigured = true;
   Serial.println("[time] NTP configured");
 }
+
+void configureMdnsIfConnected() {
+  if (mdnsStarted || WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+  if (MDNS.begin(AppConfig::Hostname)) {
+    MDNS.addService("http", "tcp", 80);
+    mdnsStarted = true;
+    Serial.printf("[wifi] mDNS ready: http://%s.local\n", AppConfig::Hostname);
+  } else {
+    Serial.println("[wifi] mDNS start failed");
+  }
+}
 } // namespace
 
 bool startWiFiManager() {
@@ -159,8 +174,14 @@ void serviceWiFiManager() {
   }
 
   if (connected) {
+    configureMdnsIfConnected();
     configureTimeIfConnected();
     return;
+  }
+
+  if (mdnsStarted) {
+    MDNS.end();
+    mdnsStarted = false;
   }
 
   if (!setupApActive || !apEnabled()) {

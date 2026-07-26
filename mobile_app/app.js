@@ -1,9 +1,9 @@
-const MODE_NAMES = ["Clock", "Spectrum", "Fluid", "Text", "Timer", "Weather", "Game"];
-const CLOCK_THEMES = ["Classic", "Rainbow", "Breath", "Night", "Minimal"];
-const AUDIO_MODES = ["Spectrum", "Mirror", "VU", "Bass", "Fire", "Burst"];
-const GAME_STATES = ["Idle", "Running", "Paused", "GameOver"];
+const MODE_NAMES = ["时钟", "频谱", "流体", "文字", "计时", "天气", "游戏"];
+const CLOCK_THEMES = ["经典", "彩虹", "呼吸", "夜间", "极简"];
+const AUDIO_MODES = ["普通频谱", "镜像频谱", "音量表", "低频脉冲", "火焰频谱", "中心扩散"];
+const GAME_STATES = ["未开始", "进行中", "已暂停", "游戏结束"];
 const SCENE_REASONS = ["手动场景", "安静时段", "音乐活动", "姿态交互", "计时进行中"];
-const DESK_STATES = ["Unknown", "Focus", "Meeting", "Rest", "Away"];
+const DESK_STATES = ["未知", "专注", "会议", "休息", "离开"];
 const CUSTOM_SCENE_STORAGE_KEY = "pixelClock.customScenes.v1";
 const CUSTOM_SCENE_LIMIT = 12;
 
@@ -35,7 +35,7 @@ const app = {
 function createMockState() {
   return {
     mode: 0,
-    modeName: "Clock",
+    modeName: "时钟",
     clockTheme: 0,
     scrollText: "PIXEL CLOCK",
     scrollSpeedMs: 90,
@@ -69,9 +69,10 @@ function createMockState() {
     notificationQueueCount: 0,
     weatherEnabled: true,
     weatherDisplayMode: 0,
-    weatherCity: "Lanzhou",
+    weatherCity: "兰州",
     weatherLatitude: 36.0611,
     weatherLongitude: 103.8343,
+    weatherAutoLocate: true,
     weatherUpdateIntervalMin: 30,
     gameType: 0,
     gameUseMpuControl: false,
@@ -136,7 +137,7 @@ function createMockState() {
     },
     weather: {
       enabled: true,
-      city: "Lanzhou",
+      city: "兰州",
       latitude: 36.0611,
       longitude: 103.8343,
       updateIntervalMin: 30,
@@ -172,10 +173,10 @@ function createMockState() {
       enabled: true,
       autoScene: false,
       state: 1,
-      label: "Focus",
+      label: "专注",
       confidence: 0.82,
       baselineState: 3,
-      baselineLabel: "Rest",
+      baselineLabel: "休息",
       baselineConfidence: 0.65,
       features: [0.12, 0.08, 0.04, 0.38, 0.13],
       scores: [0.82, 0.31, 0.54, 0.22],
@@ -188,7 +189,7 @@ function createMockState() {
       recommendedSamplesPerClass: 8,
       inferenceCount: 1,
       inferenceMicros: 124,
-      lastCalibrationLabel: "Unknown",
+      lastCalibrationLabel: "未知",
       offlineInferenceCount: 24,
       lastInferenceOffline: false,
       evaluation: {
@@ -309,27 +310,27 @@ function bindControls() {
   qsa("[data-ai-label]").forEach((button) => {
     button.addEventListener("click", async () => {
       const ok = await postControl({ deskAiCalibration: Number(button.dataset.aiLabel) });
-      if (ok) toast("Calibration sample saved");
+      if (ok) toast("已保存校准样本");
     });
   });
   byId("deskAiResetProfile").addEventListener("click", () => confirmAction(
-    "Reset all local Desk AI calibration samples?",
+    "确定重置全部本地桌面 AI 校准样本吗？",
     async () => {
       const ok = await postControl({ deskAiResetProfile: true });
-      if (ok) toast("Calibration profile reset");
+      if (ok) toast("校准画像已重置");
     },
   ));
   qsa("[data-ai-evaluation]").forEach((button) => {
     button.addEventListener("click", async () => {
       const ok = await postControl({ deskAiEvaluationLabel: Number(button.dataset.aiEvaluation) });
-      if (ok) toast("Ground-truth sample recorded");
+      if (ok) toast("已记录真实标注样本");
     });
   });
   byId("deskAiResetEvaluation").addEventListener("click", () => confirmAction(
-    "Reset this validation run and its confusion matrix?",
+    "确定重置本次验证及混淆矩阵吗？",
     async () => {
       const ok = await postControl({ deskAiResetEvaluation: true });
-      if (ok) toast("Validation run reset");
+      if (ok) toast("验证记录已重置");
     },
   ));
   bindCheckbox("gammaCorrection", (checked) => postControl({ gammaCorrection: checked }));
@@ -395,9 +396,18 @@ function bindControls() {
 
   bindCheckbox("weatherEnabled", (checked) => postControl({ weatherEnabled: checked }));
   bindSelect("weatherDisplayMode", (value) => postControl({ weatherDisplayMode: Number(value) }));
-  bindTextValue("weatherCity", (value) => postControl({ weatherCity: value }));
-  bindNumber("weatherLatitude", (value) => postControl({ weatherLatitude: Number(value) }));
-  bindNumber("weatherLongitude", (value) => postControl({ weatherLongitude: Number(value) }));
+  bindTextValue("weatherCity", (value) => postControl({
+    weatherCity: value.trim(), weatherAutoLocate: true, weatherRefresh: true, mode: 5,
+  }));
+  bindCheckbox("weatherAutoLocate", (checked) => postControl({
+    weatherAutoLocate: checked, weatherRefresh: checked,
+  }));
+  bindNumber("weatherLatitude", (value) => postControl({
+    weatherLatitude: Number(value), weatherAutoLocate: false, weatherRefresh: true,
+  }));
+  bindNumber("weatherLongitude", (value) => postControl({
+    weatherLongitude: Number(value), weatherAutoLocate: false, weatherRefresh: true,
+  }));
   bindNumber("weatherUpdateIntervalMin", (value) => postControl({ weatherUpdateIntervalMin: Number(value) }));
   byId("showWeatherBtn").addEventListener("click", () => postControl({ mode: 5 }));
   byId("refreshWeatherBtn").addEventListener("click", () => postControl({ weatherRefresh: true, mode: 5 }));
@@ -421,6 +431,7 @@ function bindControls() {
   byId("exportConfigBtn").addEventListener("click", exportConfig);
   byId("importConfigBtn").addEventListener("click", importConfig);
   byId("wifiScanBtn").addEventListener("click", scanWifi);
+  byId("wifiConnectBtn").addEventListener("click", connectDeviceWifi);
   byId("wifiResetBtn").addEventListener("click", () => confirmAction("清除 Wi-Fi 并重启设备？", () => devicePost("/api/wifi/reset", null, "设备将重启配网")));
   byId("rebootBtn").addEventListener("click", () => confirmAction("重启设备？", () => devicePost("/api/reboot", null, "重启命令已发送")));
 }
@@ -667,6 +678,7 @@ function normalizeState(data) {
       hostname: "pixel-fluid-clock",
     },
     weather: data.weather || app.state.weather,
+    weatherAutoLocate: data.weatherAutoLocate ?? data.weather?.autoLocate ?? app.state.weatherAutoLocate,
     game: data.game || app.state.game,
     deskAiEnabled: data.deskAiEnabled ?? data.deskAi?.enabled ?? app.state.deskAiEnabled,
     deskAiAutoScene: data.deskAiAutoScene ?? data.deskAi?.autoScene ?? app.state.deskAiAutoScene,
@@ -728,7 +740,7 @@ function applyLocalControlPatch(patch) {
   const s = app.state;
   if (patch.mode !== undefined) {
     s.mode = Number(patch.mode);
-    s.modeName = MODE_NAMES[s.mode] || "Clock";
+    s.modeName = MODE_NAMES[s.mode] || "时钟";
   }
   if (patch.clockTheme !== undefined) s.clockTheme = Number(patch.clockTheme);
   if (patch.brightness !== undefined) {
@@ -777,7 +789,7 @@ function applyLocalControlPatch(patch) {
   }
   if (patch.deskAiResetProfile) {
     s.deskAi.samples = [0, 0, 0, 0];
-    s.deskAi.lastCalibrationLabel = "Unknown";
+    s.deskAi.lastCalibrationLabel = "未知";
   }
   if (patch.deskAiEvaluationLabel !== undefined) {
     const actual = Number(patch.deskAiEvaluationLabel) - 1;
@@ -802,8 +814,9 @@ function applyLocalControlPatch(patch) {
     s.weather.enabled = s.weatherEnabled;
   }
   if (patch.weatherDisplayMode !== undefined) s.weatherDisplayMode = Number(patch.weatherDisplayMode);
+  if (patch.weatherAutoLocate !== undefined) s.weatherAutoLocate = Boolean(patch.weatherAutoLocate);
   if (patch.weatherCity !== undefined) {
-    s.weatherCity = String(patch.weatherCity).slice(0, 31);
+    s.weatherCity = String(patch.weatherCity).slice(0, 47);
     s.weather.city = s.weatherCity;
   }
   if (patch.weatherLatitude !== undefined) {
@@ -919,7 +932,7 @@ async function postGameDirection(direction) {
 function applyLocalGameAction(action) {
   const game = app.state.game;
   app.state.mode = 6;
-  app.state.modeName = "Game";
+  app.state.modeName = "游戏";
   if (action === "start") game.runState = 1;
   if (action === "pause") game.runState = 2;
   if (action === "resume") game.runState = 1;
@@ -1026,9 +1039,10 @@ function captureCurrentScenePatch() {
     pomodoroBreakMin: Number(s.pomodoroBreakMin),
     weatherEnabled: Boolean(s.weatherEnabled),
     weatherDisplayMode: Number(s.weatherDisplayMode),
-    weatherCity: String(s.weatherCity || "").slice(0, 31),
+    weatherCity: String(s.weatherCity || "").slice(0, 47),
     weatherLatitude: Number(s.weatherLatitude),
     weatherLongitude: Number(s.weatherLongitude),
+    weatherAutoLocate: Boolean(s.weatherAutoLocate),
     weatherUpdateIntervalMin: Number(s.weatherUpdateIntervalMin),
     gameType: Number(s.gameType),
     gameUseMpuControl: Boolean(s.gameUseMpuControl),
@@ -1095,13 +1109,13 @@ function deleteCustomScene(sceneId) {
 }
 
 function customSceneSummary(patch) {
-  const mode = MODE_NAMES[Number(patch.mode)] || "Clock";
+  const mode = MODE_NAMES[Number(patch.mode)] || "时钟";
   const brightness = patch.autoBrightness ? "自动亮度" : `亮度 ${patch.manualBrightness}`;
   if (Number(patch.mode) === 3) {
     return `${mode} / ${String(patch.scrollText || "").slice(0, 12)} / ${brightness}`;
   }
   if (Number(patch.mode) === 1) {
-    return `${mode} / ${AUDIO_MODES[Number(patch.audioVisualMode)] || "Spectrum"} / ${brightness}`;
+    return `${mode} / ${AUDIO_MODES[Number(patch.audioVisualMode)] || "普通频谱"} / ${brightness}`;
   }
   return `${mode} / ${brightness}`;
 }
@@ -1216,14 +1230,39 @@ function importConfig() {
 
 async function scanWifi() {
   if (app.settings.mockMode || !app.connected) {
-    appendLog("MOCK Wi-Fi scan\nStudio-WiFi -54 dBm\nPixelClock-Setup AP");
+    appendLog("演示 Wi-Fi 扫描\nStudio-WiFi  -54 dBm\nPixelClock-Setup  热点");
     return;
   }
   try {
     const data = await fetchJson("/api/wifi/scan");
     appendLog(JSON.stringify(data, null, 2));
   } catch (error) {
-    appendLog(`Wi-Fi scan error: ${shortError(error)}`);
+    appendLog(`Wi-Fi 扫描失败：${shortError(error)}`);
+  }
+}
+
+async function connectDeviceWifi() {
+  const ssid = byId("wifiSsidInput").value.trim();
+  const password = byId("wifiPasswordInput").value;
+  if (!ssid) {
+    toast("请填写 Wi-Fi 名称");
+    return;
+  }
+  if (app.settings.mockMode || !app.connected) {
+    toast("请先连接开发板，再配置 Wi-Fi");
+    return;
+  }
+  try {
+    const result = await fetchJson("/api/wifi/connect", {
+      method: "POST",
+      body: JSON.stringify({ ssid, password }),
+    });
+    byId("wifiPasswordInput").value = "";
+    appendLog(`Wi-Fi credentials sent for ${ssid}\n${JSON.stringify(result, null, 2)}`);
+    toast("Wi-Fi 凭据已发送，设备正在连接");
+    setTimeout(refreshState, 1800);
+  } catch (error) {
+    toast(`Wi-Fi 配置失败：${shortError(error)}`);
   }
 }
 
@@ -1527,14 +1566,14 @@ function renderAll() {
 function renderStateText() {
   const s = app.state;
   const visibleMode = s.smartScenes ? (s.effectiveMode ?? s.mode) : s.mode;
-  byId("modeTitle").textContent = MODE_NAMES[visibleMode] || "Clock";
+  byId("modeTitle").textContent = MODE_NAMES[visibleMode] || "时钟";
   byId("clockText").textContent = s.time || "--:--:--";
   byId("statBrightness").textContent = `${s.effectiveBrightness ?? s.manualBrightness ?? "--"} / ${s.brightnessCap ?? "--"}`;
   byId("statVbus").textContent = `${formatNumber(s.vbus, 2)} V`;
   byId("statWeather").textContent = `${formatNumber(s.weather?.temperature, 1)} C`;
   byId("statAudio").textContent = formatNumber(s.rms, 2);
   const ai = s.deskAi || {};
-  const aiState = DESK_STATES[ai.state] || ai.label || "Unknown";
+  const aiState = DESK_STATES[ai.state] || ai.label || "未知";
   const aiConfidence = Math.round(clamp(Number(ai.confidence || 0), 0, 1) * 100);
   byId("homeAiLabel").textContent = aiState;
   byId("homeAiConfidence").textContent = `${aiConfidence}%`;
@@ -1548,19 +1587,19 @@ function renderStateText() {
   renderAiFeature("Motion", aiFeatures[2]);
   renderAiFeature("Light", aiFeatures[3]);
   renderAiFeature("Engagement", aiFeatures[4]);
-  byId("aiInference").textContent = `${ai.inferenceMicros ?? "--"} us / ${ai.inferenceCount ?? 0} local inferences`;
-  byId("aiSamples").textContent = `Samples F:${ai.samples?.[0] ?? 0} M:${ai.samples?.[1] ?? 0} R:${ai.samples?.[2] ?? 0} A:${ai.samples?.[3] ?? 0}`;
+  byId("aiInference").textContent = `${ai.inferenceMicros ?? "--"} 微秒 / ${ai.inferenceCount ?? 0} 次本地推理`;
+  byId("aiSamples").textContent = `校准样本：专注 ${ai.samples?.[0] ?? 0} / 会议 ${ai.samples?.[1] ?? 0} / 休息 ${ai.samples?.[2] ?? 0} / 离开 ${ai.samples?.[3] ?? 0}`;
   const profileCoverage = Number(ai.profileCoverage || 0);
   const profileReady = Boolean(ai.profileReady);
   const minSamples = Number(ai.minSamplesPerClass || 4);
   const recommendedSamples = Number(ai.recommendedSamplesPerClass || 8);
-  byId("aiProfileStatus").textContent = profileReady ? "Ready for blind test" : "Calibration needed";
+  byId("aiProfileStatus").textContent = profileReady ? "可开始盲测" : "需要校准";
   byId("aiProfileCoverage").textContent = `${profileCoverage} / 4`;
   byId("aiProfileQuality").textContent = `${Math.round(Number(ai.profileQuality || 0))}%`;
   byId("aiProfileSeparation").textContent = Number(ai.centroidSeparation || 0).toFixed(2);
   byId("aiProfileHint").textContent = profileReady
-    ? `Profile passes the coverage and separation gate. Keep calibration frozen, then collect independent blind-test labels for the comparison.`
-    : `Collect at least ${minSamples} samples for each state. ${recommendedSamples} per state is recommended for a more stable personal profile.`;
+    ? "画像已通过覆盖率和区分度门槛。请固定校准数据，再采集独立盲测标注进行比较。"
+    : `每种状态至少采集 ${minSamples} 个样本；建议每种状态 ${recommendedSamples} 个样本，以获得更稳定的个性化画像。`;
   const evaluation = ai.evaluation || {};
   const evaluationTotal = Number(evaluation.total || 0);
   byId("aiPersonalizedAccuracy").textContent = evaluationTotal
@@ -1571,9 +1610,9 @@ function renderStateText() {
     : "--";
   byId("aiEvaluationTotal").textContent = String(evaluationTotal);
   byId("aiConfusionHint").textContent = evaluationTotal
-    ? `Confusion matrix: rows are actual states; columns are device predictions. F:${evaluation.samples?.[0] ?? 0} M:${evaluation.samples?.[1] ?? 0} R:${evaluation.samples?.[2] ?? 0} A:${evaluation.samples?.[3] ?? 0}.`
-    : "No validation samples yet. Collect each class several times for a fair comparison.";
-  const recallLabels = ["Focus", "Meeting", "Rest", "Away"];
+    ? `混淆矩阵：行是真实状态，列是设备预测。专注 ${evaluation.samples?.[0] ?? 0}、会议 ${evaluation.samples?.[1] ?? 0}、休息 ${evaluation.samples?.[2] ?? 0}、离开 ${evaluation.samples?.[3] ?? 0}。`
+    : "还没有验证样本。每个类别多采集几次，比较会更公平。";
+  const recallLabels = ["专注", "会议", "休息", "离开"];
   const recalls = recallLabels.map((label, index) => {
     const total = Number(evaluation.samples?.[index] || 0);
     const correct = Number(evaluation.confusion?.[index]?.[index] || 0);
@@ -1583,22 +1622,22 @@ function renderStateText() {
     ? Math.round(((Number(evaluation.personalizedCorrect || 0) - Number(evaluation.baselineCorrect || 0)) / evaluationTotal) * 100)
     : 0;
   byId("aiRecallHint").textContent = evaluationTotal
-    ? `Blind-test recall: ${recalls.join(" / ")}. Personalized model ${improvement >= 0 ? "+" : ""}${improvement} percentage points versus the default baseline.`
-    : "Per-state recall will appear after the first blind validation samples.";
+    ? `盲测召回率：${recalls.join(" / ")}；个性化模型相比默认基线 ${improvement >= 0 ? "+" : ""}${improvement} 个百分点。`
+    : "完成首批盲测样本后，这里会显示各状态的召回率。";
   byId("aiOfflineProof").textContent = ai.lastInferenceOffline
-    ? `Offline inference active: ${ai.offlineInferenceCount ?? 0}`
-    : `Offline inference count: ${ai.offlineInferenceCount ?? 0}`;
+    ? `离线推理已启用：${ai.offlineInferenceCount ?? 0}`
+    : `离线推理次数：${ai.offlineInferenceCount ?? 0}`;
   renderAiTimeline(ai.timeline || [], s.uptimeMs || 0);
   byId("timerDisplay").textContent = formatTimerText();
   byId("weatherTemp").textContent = `${formatNumber(s.weather?.temperature, 1)} C`;
-  byId("weatherMeta").textContent = `${s.weather?.city || s.weatherCity} / ${s.weather?.humidity ?? "--"}% / wind ${formatNumber(s.weather?.windSpeed, 1)}`;
+  byId("weatherMeta").textContent = `${s.weather?.city || s.weatherCity} / 湿度 ${s.weather?.humidity ?? "--"}% / 风速 ${formatNumber(s.weather?.windSpeed, 1)}`;
   byId("gameScore").textContent = s.game?.score ?? 0;
   byId("gameBest").textContent = s.game?.highScore ?? 0;
   byId("deviceIp").textContent = s.network?.ip || s.ip || "0.0.0.0";
   byId("deviceSsid").textContent = s.network?.ssid || s.wifiSsid || "--";
   byId("deviceRssi").textContent = s.network?.rssi ? `${s.network.rssi} dBm` : "--";
-  byId("devicePower").textContent = s.highPower ? "12V high power" : "5V / limited";
-  byId("deviceDcdc").textContent = s.dcdcEnabled ? "enabled" : "off";
+  byId("devicePower").textContent = s.highPower ? "12V 高功率" : "5V / 限流";
+  byId("deviceDcdc").textContent = s.dcdcEnabled ? "已开启" : "已关闭";
   byId("deviceHeap").textContent = s.freeHeap ? `${Math.round(s.freeHeap / 1024)} KB` : "--";
   byId("deviceUptime").textContent = formatDuration(s.uptimeMs || 0);
   byId("lowMeter").style.transform = `scaleX(${clamp(s.audioLowEnergy || 0, 0.03, 1)})`;
@@ -1663,6 +1702,7 @@ function renderControls() {
   setChecked("weatherEnabled", s.weatherEnabled);
   setValue("weatherDisplayMode", s.weatherDisplayMode);
   setValue("weatherCity", s.weatherCity);
+  setChecked("weatherAutoLocate", s.weatherAutoLocate);
   setValue("weatherLatitude", s.weatherLatitude);
   setValue("weatherLongitude", s.weatherLongitude);
   setValue("weatherUpdateIntervalMin", s.weatherUpdateIntervalMin);
@@ -1689,7 +1729,7 @@ function updateConnectionUi() {
   const text = byId("connText");
   dot.classList.remove("connected", "error");
   if (app.settings.mockMode) {
-    text.textContent = "Mock 模式";
+    text.textContent = "演示模式";
   } else if (app.connected) {
     dot.classList.add("connected");
     text.textContent = app.realtimeConnected ? "设备在线 / 实时" : "设备在线 / 轮询";
@@ -1725,12 +1765,12 @@ function aiExplanation(state, features) {
   const motion = Math.round(clamp(Number(features[2] || 0), 0, 1) * 100);
   const light = Math.round(clamp(Number(features[3] || 0), 0, 1) * 100);
   const explanations = {
-    Focus: `Low audio ${audio}% and motion ${motion}% match your calibrated focus profile.`,
-    Meeting: `Audio ${audio}% with active engagement matches your meeting profile.`,
-    Rest: `Low activity with ambient light ${light}% matches your rest profile.`,
-    Away: "Sustained low audio and motion indicate the desk is unattended.",
+    专注: `音频 ${audio}%、姿态变化 ${motion}%，与已校准的专注画像相符。`,
+    会议: `音频 ${audio}% 且使用活跃度较高，与会议画像相符。`,
+    休息: `整体活动较低、环境光 ${light}%，与休息画像相符。`,
+    离开: "持续的低音频与低姿态变化，表明桌面暂时无人。",
   };
-  return explanations[state] || "Collecting local microphone, motion, and light features for the first decision.";
+  return explanations[state] || "正在采集本地音频、姿态和环境光特征，准备首次判断。";
 }
 
 function renderAiTimeline(timeline, uptimeMs) {
@@ -1738,7 +1778,7 @@ function renderAiTimeline(timeline, uptimeMs) {
   if (!root) return;
   root.innerHTML = "";
   if (!timeline.length) {
-    root.textContent = "Waiting for local inference history.";
+    root.textContent = "正在等待本地推理历史。";
     return;
   }
   const recent = timeline.slice(-30);
@@ -1747,7 +1787,7 @@ function renderAiTimeline(timeline, uptimeMs) {
     const cell = document.createElement("span");
     cell.className = `timeline-cell state-${state}${offline ? " offline" : ""}`;
     const ageSec = Math.max(0, Math.round((uptimeMs - Number(timestampMs || 0)) / 1000));
-    cell.title = `${DESK_STATES[state] || "Unknown"} / ${confidence}% / ${offline ? "offline" : "connected"} / ${ageSec}s ago`;
+    cell.title = `${DESK_STATES[state] || "未知"} / ${confidence}% / ${offline ? "离线" : "已连接"} / ${ageSec} 秒前`;
     cell.textContent = String(state || 0);
     root.appendChild(cell);
   });
@@ -1758,9 +1798,9 @@ function formatDuration(ms) {
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
+  if (h > 0) return `${h} 小时 ${m} 分`;
+  if (m > 0) return `${m} 分 ${s} 秒`;
+  return `${s} 秒`;
 }
 
 function rgbToHex(color) {

@@ -14,6 +14,7 @@
 #include <WiFiClientSecure.h>
 
 #include "app_state.h"
+#include "settings_storage.h"
 
 namespace {
 TaskHandle_t weatherTaskHandle = nullptr;
@@ -29,8 +30,8 @@ void copyWeatherCity(char *dest, const char *src) {
   }
   size_t out = 0;
   while (src[0] != '\0' && out < WeatherCityMaxLen - 1) {
-    const char c = *src++;
-    dest[out++] = (c >= 0x20 && c <= 0x7E) ? c : ' ';
+    const uint8_t c = static_cast<uint8_t>(*src++);
+    dest[out++] = c >= 0x20 ? static_cast<char>(c) : ' ';
   }
   dest[out] = '\0';
 }
@@ -96,17 +97,101 @@ String buildWeatherUrl(float lat, float lon) {
   return url;
 }
 
-bool fetchWeatherOnce(const ControlState &control, WeatherState &weather) {
-  weather.online = false;
-  weather.latitude = control.weatherLatitude;
-  weather.longitude = control.weatherLongitude;
-  copyWeatherCity(weather.city, control.weatherCity);
-  weather.lastUpdateMs = millis();
+String urlEncode(const char *text) {
+  String encoded;
+  if (!text) {
+    return encoded;
+  }
 
-  if (WiFi.status() != WL_CONNECTED) {
-    setLastError(weather, "WiFi not connected");
+  constexpr char Hex[] = "0123456789ABCDEF";
+  while (*text) {
+    const uint8_t c = static_cast<uint8_t>(*text++);
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+      encoded += static_cast<char>(c);
+    } else {
+      encoded += '%';
+      encoded += Hex[c >> 4];
+      encoded += Hex[c & 0x0F];
+    }
+  }
+  return encoded;
+}
+
+bool geocodeWeatherCity(const char *city, float &latitude, float &longitude, WeatherState &weather) {
+  if (!city || city[0] == '\0') {
+    setLastError(weather, "城市名称不能为空");
     return false;
   }
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(8000);
+
+  const String url = "https://geocoding-api.open-meteo.com/v1/search?name=" +
+                     urlEncode(city) + "&count=1&language=zh&format=json";
+  if (!http.begin(client, url)) {
+    setLastError(weather, "城市定位服务不可用");
+    return false;
+  }
+
+  const int status = http.GET();
+  if (status != HTTP_CODE_OK) {
+    const String error = "城市定位 HTTP " + String(status);
+    setLastError(weather, error.c_str());
+    http.end();
+    return false;
+  }
+
+  JsonDocument doc;
+  const DeserializationError jsonErr = deserializeJson(doc, http.getString());
+  http.end();
+  if (jsonErr) {
+    setLastError(weather, "城市定位数据解析失败");
+    return false;
+  }
+
+  JsonArray results = doc["results"].as<JsonArray>();
+  if (results.isNull() || results.size() == 0) {
+    setLastError(weather, "未找到该城市");
+    return false;
+  }
+
+  JsonObject location = results[0];
+  latitude = location["latitude"] | 0.0f;
+  longitude = location["longitude"] | 0.0f;
+  if (latitude == 0.0f && longitude == 0.0f) {
+    setLastError(weather, "城市坐标无效");
+    return false;
+  }
+  return true;
+}
+
+bool fetchWeatherOnce(ControlState &control, WeatherState &weather, bool &locationChanged) {
+  weather.online = false;
+  copyWeatherCity(weather.city, control.weatherCity);
+  weather.lastUpdateMs = millis();
+  locationChanged = false;
+
+  if (WiFi.status() != WL_CONNECTED) {
+    setLastError(weather, "Wi-Fi 未连接");
+    return false;
+  }
+
+  float latitude = control.weatherLatitude;
+  float longitude = control.weatherLongitude;
+  if (control.weatherAutoLocate) {
+    if (!geocodeWeatherCity(control.weatherCity, latitude, longitude, weather)) {
+      return false;
+    }
+    locationChanged = fabsf(latitude - control.weatherLatitude) > 0.00001f ||
+                      fabsf(longitude - control.weatherLongitude) > 0.00001f;
+    control.weatherLatitude = latitude;
+    control.weatherLongitude = longitude;
+  }
+  weather.latitude = latitude;
+  weather.longitude = longitude;
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -114,15 +199,15 @@ bool fetchWeatherOnce(const ControlState &control, WeatherState &weather) {
   HTTPClient http;
   http.setTimeout(8000);
 
-  const String url = buildWeatherUrl(control.weatherLatitude, control.weatherLongitude);
+  const String url = buildWeatherUrl(latitude, longitude);
   if (!http.begin(client, url)) {
-    setLastError(weather, "HTTP begin failed");
+    setLastError(weather, "天气服务不可用");
     return false;
   }
 
   const int status = http.GET();
   if (status != HTTP_CODE_OK) {
-    String err = "HTTP " + String(status);
+    String err = "天气 HTTP " + String(status);
     setLastError(weather, err.c_str());
     http.end();
     return false;
@@ -134,13 +219,13 @@ bool fetchWeatherOnce(const ControlState &control, WeatherState &weather) {
   JsonDocument doc;
   const DeserializationError jsonErr = deserializeJson(doc, payload);
   if (jsonErr) {
-    setLastError(weather, "JSON parse failed");
+    setLastError(weather, "天气数据解析失败");
     return false;
   }
 
   JsonObject current = doc["current"];
   if (current.isNull()) {
-    setLastError(weather, "missing current");
+    setLastError(weather, "天气数据不完整");
     return false;
   }
 
@@ -164,7 +249,8 @@ bool fetchWeatherOnce(const ControlState &control, WeatherState &weather) {
   weather.lastSuccessMs = millis();
   setLastError(weather, "");
 
-  Serial.printf("[weather] %s %.1fC %s\n", weather.city, weather.temperature, weatherCodeToText(weather.weatherCode));
+  Serial.printf("[weather] %s %.1fC %s (%.4f, %.4f)\n", weather.city, weather.temperature,
+                weatherCodeToText(weather.weatherCode), weather.latitude, weather.longitude);
   return true;
 }
 
@@ -178,7 +264,7 @@ void weatherTask(void *) {
 
   while (true) {
     RenderState state = copySharedState();
-    const ControlState control = state.control;
+    ControlState control = state.control;
 
     if (!control.weatherEnabled) {
       state.weather.online = false;
@@ -209,9 +295,20 @@ void weatherTask(void *) {
     if (shouldFetch) {
       lastAttemptMs = now;
       WeatherState weather = state.weather;
-      if (!fetchWeatherOnce(control, weather)) {
+      bool locationChanged = false;
+      if (!fetchWeatherOnce(control, weather, locationChanged)) {
         weather.failCount++;
         weather.lastUpdateMs = millis();
+      }
+      if (locationChanged) {
+        RenderState latest = copySharedState();
+        if (latest.control.weatherAutoLocate &&
+            strcmp(latest.control.weatherCity, control.weatherCity) == 0) {
+          latest.control.weatherLatitude = control.weatherLatitude;
+          latest.control.weatherLongitude = control.weatherLongitude;
+          updateControlState(latest.control);
+          requestSettingsSave();
+        }
       }
       publishWeatherResult(weather);
     }

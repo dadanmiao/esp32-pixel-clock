@@ -879,6 +879,26 @@ input[type="range"] {
 .training-metrics div:nth-child(2) { border-color: #8bd450; }
 .training-metrics div:nth-child(3) { border-color: var(--warm); }
 
+.wifi-connect-card {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.wifi-connect-card h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.wifi-connect-card p {
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .evaluation-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

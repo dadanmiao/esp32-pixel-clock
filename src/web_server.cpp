@@ -397,8 +397,8 @@ void copyWeatherCity(char *dest, const char *src) {
 
   size_t out = 0;
   while (src[0] != '\0' && out < WeatherCityMaxLen - 1) {
-    const char c = *src++;
-    dest[out++] = (c >= 0x20 && c <= 0x7E) ? c : ' ';
+    const uint8_t c = static_cast<uint8_t>(*src++);
+    dest[out++] = c >= 0x20 ? static_cast<char>(c) : ' ';
   }
   dest[out] = '\0';
 }
@@ -455,6 +455,7 @@ void addControlConfig(JsonDocument &doc, const ControlState &control) {
   doc["weatherCity"] = control.weatherCity;
   doc["weatherLatitude"] = control.weatherLatitude;
   doc["weatherLongitude"] = control.weatherLongitude;
+  doc["weatherAutoLocate"] = control.weatherAutoLocate;
   doc["weatherUpdateIntervalMin"] = control.weatherUpdateIntervalMin;
   doc["gameType"] = static_cast<uint8_t>(control.gameType);
   doc["gameUseMpuControl"] = control.gameUseMpuControl;
@@ -749,6 +750,7 @@ String buildStateJson() {
   weather["city"] = state.control.weatherCity;
   weather["latitude"] = state.control.weatherLatitude;
   weather["longitude"] = state.control.weatherLongitude;
+  weather["autoLocate"] = state.control.weatherAutoLocate;
   weather["updateIntervalMin"] = state.control.weatherUpdateIntervalMin;
   weather["online"] = state.weather.online;
   weather["hasData"] = state.weather.hasData;
@@ -1131,6 +1133,7 @@ void handleControlBody(AsyncWebServerRequest *request, uint8_t *data, size_t len
   }
   bool weatherConfigChanged = false;
   bool gameConfigChanged = false;
+  const bool hasWeatherAutoLocate = doc["weatherAutoLocate"].is<bool>();
   if (doc["weatherEnabled"].is<bool>()) {
     state.control.weatherEnabled = doc["weatherEnabled"];
     settingsChanged = true;
@@ -1141,18 +1144,32 @@ void handleControlBody(AsyncWebServerRequest *request, uint8_t *data, size_t len
     state.control.weatherDisplayMode = static_cast<WeatherDisplayMode>(mode);
     settingsChanged = true;
   }
+  if (hasWeatherAutoLocate) {
+    state.control.weatherAutoLocate = doc["weatherAutoLocate"].as<bool>();
+    settingsChanged = true;
+    weatherConfigChanged = true;
+  }
   if (doc["weatherCity"].is<const char *>()) {
     copyWeatherCity(state.control.weatherCity, doc["weatherCity"].as<const char *>());
+    if (!hasWeatherAutoLocate) {
+      state.control.weatherAutoLocate = true;
+    }
     settingsChanged = true;
     weatherConfigChanged = true;
   }
   if (doc["weatherLatitude"].is<float>() || doc["weatherLatitude"].is<double>() || doc["weatherLatitude"].is<int>()) {
     state.control.weatherLatitude = constrain(doc["weatherLatitude"].as<float>(), -90.0f, 90.0f);
+    if (!hasWeatherAutoLocate) {
+      state.control.weatherAutoLocate = false;
+    }
     settingsChanged = true;
     weatherConfigChanged = true;
   }
   if (doc["weatherLongitude"].is<float>() || doc["weatherLongitude"].is<double>() || doc["weatherLongitude"].is<int>()) {
     state.control.weatherLongitude = constrain(doc["weatherLongitude"].as<float>(), -180.0f, 180.0f);
+    if (!hasWeatherAutoLocate) {
+      state.control.weatherAutoLocate = false;
+    }
     settingsChanged = true;
     weatherConfigChanged = true;
   }

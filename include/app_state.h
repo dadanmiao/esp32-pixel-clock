@@ -11,7 +11,7 @@
 
 #include "app_config.h"
 
-constexpr size_t WeatherCityMaxLen = 32;
+constexpr size_t WeatherCityMaxLen = 48;
 constexpr size_t DeskAiFeatureCount = 5;
 constexpr size_t DeskAiClassCount = 4;
 constexpr size_t DeskAiTimelineCapacity = 60;
@@ -175,6 +175,7 @@ struct ControlState {
   char weatherCity[WeatherCityMaxLen] = "Lanzhou";
   float weatherLatitude = 36.0611f;
   float weatherLongitude = 103.8343f;
+  bool weatherAutoLocate = true;
   uint16_t weatherUpdateIntervalMin = 30;
   GameType gameType = GameType::Snake;
   bool gameUseMpuControl = false;
