@@ -1,87 +1,93 @@
-# ESP32-S3 Desktop Pixel Clock and Fluid Rhythm Terminal
+# PixelFlow Desk AI
 
-Author: Yang
+**Firmware v2.7.3 | Android App v1.8.2**
 
-This is a PlatformIO Arduino framework project for a 32x8 WS2812B desktop pixel clock, audio spectrum display, and gravity-driven fluid animation terminal.
+PixelFlow Desk AI is an ESP32-S3 edge-AI desktop terminal built around a 32 x 8 WS2812B matrix. It combines audio, motion, ambient light, temperature, humidity, weather, local inference, adaptive scenes, games, and an Android control app.
 
-## Hardware Pin Map
+The device performs inference locally. Its explainable five-feature prototype classifier compares a personalized floating-point model, a built-in baseline, and an INT8 quantized model. The Android app handles configuration, labeling, blind-test evaluation, visualization, and evidence export; it does not run the model.
+
+## Highlights
+
+- Clock, spectrum, fluid, text, timer, weather, and game displays.
+- MAX9814 FFT analysis, beat detection, and automatic gain control.
+- MPU6500 gravity interaction, HTU21D environment sensing, and LDR auto brightness.
+- Rule-based and AI-driven adaptive scenes with explainable decisions.
+- Personalized calibration, unknown rejection, temporal smoothing, model locking, and blind testing.
+- Open-Meteo weather, China-friendly NTP servers, and manual refresh controls.
+- Non-blocking Wi-Fi provisioning, NVS settings, Web console, LiveView, and HTTP/WebSocket APIs.
+- Capacitor Android app with Chinese-first UI and local-network device control.
+
+## Repository Layout
+
+```text
+include/       Firmware headers, configuration, and shared state
+src/           ESP32-S3 tasks, inference, rendering, networking, and APIs
+data/          Device Web assets and filesystem resources
+mobile_app/    Android app source, Capacitor project, Gradle wrapper, and build scripts
+docs/          Competition guide and Desk AI technical documentation
+platformio.ini Reproducible PlatformIO environment and library dependencies
+```
+
+Generated caches and local toolchains are intentionally excluded: `.pio/`, `node_modules/`, Android SDK/JDK copies, Gradle caches, and build outputs. Restore them from the tracked manifests and scripts.
+
+## Firmware Build
+
+1. Install Visual Studio Code and the PlatformIO IDE extension.
+2. Open this repository root.
+3. Connect the ESP32-S3 over USB.
+4. Run PlatformIO `Build` or `Upload` for the `esp32-s3-devkitc-1` environment.
+
+The current firmware has been verified to compile with the dependencies pinned in `platformio.ini`.
+
+## Android Build
+
+The app build instructions are in [`mobile_app/README.md`](mobile_app/README.md). The repository contains source code, `package-lock.json`, the Capacitor configuration, Android project, Gradle wrapper, and PowerShell build scripts.
+
+```powershell
+cd mobile_app
+npm ci
+powershell -ExecutionPolicy Bypass -File .\build-apk.ps1
+```
+
+Release APK and firmware BIN files should be attached to a GitHub Release rather than committed to the source repository.
+
+## First Connection
+
+On an unconfigured device, connect a phone to:
+
+```text
+SSID: PixelClock-Setup
+Password: pixelclock
+Portal: http://192.168.4.1
+```
+
+Select a 2.4 GHz Wi-Fi network. After provisioning, keep the phone and device on the same LAN and connect through the assigned IP address or:
+
+```text
+http://pixel-fluid-clock.local
+```
+
+Saved Wi-Fi credentials live in the device NVS and are not included in this repository.
+
+## Hardware
 
 | Module | GPIO |
 | --- | --- |
-| WS2812B data | GPIO 15 |
-| DC-DC EN | GPIO 16 |
-| VBUS ADC1 | GPIO 8 |
-| MAX9814 ADC1 | GPIO 9 |
-| LDR ADC1 | GPIO 10 |
-| I2C SDA | GPIO 14 |
-| I2C SCL | GPIO 21 |
-| MPU6500 INT | GPIO 11 |
-| BOOT / user key | GPIO 0 |
+| WS2812B data | 15 |
+| DC-DC enable | 16 |
+| VBUS ADC | 8 |
+| MAX9814 microphone | 9 |
+| LDR | 10 |
+| I2C SDA / SCL | 14 / 21 |
+| MPU6500 interrupt | 11 |
+| BOOT / user key | 0 |
 
-## LED Matrix
+The LED matrix contains 256 pixels arranged as 32 columns x 8 rows with column-major zigzag wiring.
 
-- LED count: 256.
-- Logical size: 32 columns x 8 rows.
-- First LED: top-left corner.
-- Wiring: column-major zigzag. Even columns run top-to-bottom; odd columns run bottom-to-top.
+## Documentation
 
-## Task Layout
-
-Core 0:
-
-- `audio_fft_core0`: ADC continuous DMA sampling and FFT.
-- `i2c_env_core0`: HTU21D, MPU6500, LDR adaptation, and time snapshot.
-- `power_core0`: VBUS detection and DC-DC power policy.
-- AsyncTCP/WebServer is configured to run on Core 0 by `CONFIG_ASYNC_TCP_RUNNING_CORE=0`.
-
-Core 1:
-
-- `fastled_render_core1`: FastLED refresh and animation rendering.
-
-## ADC Strategy
-
-ESP32-S3 should not have multiple tasks fighting over ADC1. This framework samples MAX9814, VBUS, and LDR through one ADC continuous DMA driver in `audio_task.cpp`. Other tasks consume the latest cached VBUS/LDR readings through `adc_sample_bus`.
-
-In the current firmware, MAX9814 audio defaults to `analogRead(GPIO9)` because ADC DMA on Arduino-ESP32 2.x / ESP-IDF 4.4 was unstable with this board package. The DMA path remains in `audio_task.cpp` and can be re-enabled with `AudioUseAdcDma`.
-
-For the full hardware and software development notes, see `DEVELOPMENT.md`.
-
-## Wi-Fi
-
-Set Wi-Fi credentials with build flags in `platformio.ini`, for example:
-
-```ini
-build_flags =
-  -D WIFI_SSID=\"YourSSID\"
-  -D WIFI_PASSWORD=\"YourPassword\"
-```
-
-If credentials are empty or the connection fails, the firmware starts an AP named `PixelClock-Setup`.
-
-## Calibration
-
-Tune these values in `include/app_config.h`:
-
-- `VbusDividerRatio`: set to `6.1` for the 51k upper and 10k lower divider.
-- `Vbus12vThreshold`: voltage threshold for high-power mode.
-- `lowLightThreshold` / `highLightThreshold`: adjustable from the Web console.
-
-GPIO16 stays low during boot. After Wi-Fi/Web, ADC, I2C, power, and display tasks are started, the firmware waits `DcdcEnableDelayMs`, then enables the high-power DC-DC rail in both 5 V and 12 V modes. The detected VBUS voltage only changes the LED brightness and current limits.
-
-Brightness caps:
-
-- 12 V mode: `BrightnessCap12v = 255`.
-- 5 V mode: `BrightnessCap5v = 48`.
-- Unknown/undervoltage mode: `BrightnessCapUnknown = 24`.
-
-In 12 V mode the display task applies:
-
-```cpp
-FastLED.setMaxPowerInVoltsAndMilliamps(5, 15000);
-```
-
-In 5 V mode it applies:
-
-```cpp
-FastLED.setMaxPowerInVoltsAndMilliamps(5, 450);
-```
+- [`README.zh-CN.md`](README.zh-CN.md): Chinese project overview and setup.
+- [`TEAMMATE_HANDOFF.zh-CN.md`](TEAMMATE_HANDOFF.zh-CN.md): teammate handoff checklist.
+- [`docs/DESK_AI_TECHNICAL_DESIGN.zh-CN.md`](docs/DESK_AI_TECHNICAL_DESIGN.zh-CN.md): full Desk AI design and three-model explanation.
+- [`docs/COMPETITION_V2_7_DEMO_GUIDE.zh-CN.md`](docs/COMPETITION_V2_7_DEMO_GUIDE.zh-CN.md): competition demonstration workflow.
+- [`DEVELOPMENT.zh-CN.md`](DEVELOPMENT.zh-CN.md): firmware architecture and development notes.

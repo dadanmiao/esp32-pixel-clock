@@ -4,7 +4,7 @@
 
 ## 安装 APK
 
-已构建的测试安装包（当前版本 `1.8.0`）：
+已构建的测试安装包（当前版本 `1.8.2`）：
 
 ```text
 dist/PixelClock-debug.apk
@@ -51,6 +51,7 @@ APK 已启用 Capacitor 原生 HTTP 访问和局域网明文 HTTP，能够连接
 ```text
 GET  /api/state
 WS   /ws
+POST /api/time/sync
 POST /api/control
 POST /api/notify
 GET  /api/screen
@@ -82,6 +83,18 @@ POST /api/wifi/reset
 - 显示模型指纹、未知拒识次数、混淆矩阵、每类召回率和运行可靠性。
 - 显示天气外部请求、App API 请求、网络接收量与本地隐私审计。
 - 对比节能模式与基线功率，并可导出中文 JSON 比赛证据包。
+
+## v1.8.1 国内对时与主动更新
+
+- NTP 改用阿里云 `ntp.aliyun.com` 和腾讯云 `time1.cloud.tencent.com`。
+- 时钟页增加“立即对时”，由 ESP32-S3 主动重新发起 NTP 校时。
+- 天气页增加“立即获取天气”，主动更新当前城市且不切换显示模式。
+
+## v1.8.2 盲测结果可靠揭示
+
+- 修复端侧推理覆盖刚提交盲测记录的并发问题。
+- 提交真实标签后等待设备确认结果，自动滚动并高亮个性化、基线和 INT8 对照。
+- 盲测状态名称统一使用中文显示。
 
 ## 后续方向
 

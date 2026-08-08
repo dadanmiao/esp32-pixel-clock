@@ -1,6 +1,6 @@
 {
   "name": "pixel-clock-mobile",
-  "version": "1.8.0",
+  "version": "1.8.2",
   "private": true,
   "description": "Android controller for the ESP32-S3 Pixel Clock terminal",
   "scripts": {

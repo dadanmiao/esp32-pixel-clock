@@ -11,7 +11,7 @@
 
 namespace {
 constexpr const char *NvsNamespace = "pxclock";
-constexpr uint32_t SettingsVersion = 5;
+constexpr uint32_t SettingsVersion = 6;
 constexpr uint32_t SaveDelayMs = 1500;
 
 portMUX_TYPE saveMux = portMUX_INITIALIZER_UNLOCKED;
@@ -144,7 +144,7 @@ void loadSettingsFromNvs(ControlState &control) {
   }
 
   const uint32_t version = prefs.getUInt("ver", 0);
-  if (version != 1 && version != 2 && version != 3 && version != 4 &&
+  if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5 &&
       version != SettingsVersion) {
     prefs.end();
     Serial.println("[NVS] no valid settings, using defaults");
@@ -201,8 +201,16 @@ void loadSettingsFromNvs(ControlState &control) {
       prefs.getUChar("aiFeed", control.deskAiFeedbackThreshold), 25, 85);
   control.energyAwareMode = prefs.getBool("energy", control.energyAwareMode);
   control.competitionDemoMode = false;
-  if (prefs.getBytesLength("aiCtr") == sizeof(control.deskAiCentroids)) {
+  const bool loadedDeskAiCentroids =
+      prefs.getBytesLength("aiCtr") == sizeof(control.deskAiCentroids);
+  if (loadedDeskAiCentroids) {
     prefs.getBytes("aiCtr", control.deskAiCentroids, sizeof(control.deskAiCentroids));
+  }
+  if (version < 6 && loadedDeskAiCentroids) {
+    for (size_t category = 0; category < DeskAiClassCount; ++category) {
+      control.deskAiCentroids[category][3] =
+          1.0f - constrain(control.deskAiCentroids[category][3], 0.0f, 1.0f);
+    }
   }
   if (prefs.getBytesLength("aiCnt") == sizeof(control.deskAiSampleCounts)) {
     prefs.getBytes("aiCnt", control.deskAiSampleCounts, sizeof(control.deskAiSampleCounts));
@@ -227,6 +235,10 @@ void loadSettingsFromNvs(ControlState &control) {
 
   prefs.end();
   Serial.println("[NVS] settings loaded");
+  if (version < SettingsVersion) {
+    saveSettingsToNvs(control);
+    Serial.println("[NVS] migrated LDR/Desk AI settings to v6");
+  }
 }
 
 void saveSettingsToNvs(const ControlState &control) {

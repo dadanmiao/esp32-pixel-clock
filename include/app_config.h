@@ -7,7 +7,7 @@
 #include <Arduino.h>
 
 namespace AppConfig {
-constexpr const char *FirmwareVersion = "2.7.0";
+constexpr const char *FirmwareVersion = "2.7.3";
 constexpr uint16_t MatrixWidth = 32;
 constexpr uint16_t MatrixHeight = 8;
 constexpr uint16_t LedCount = MatrixWidth * MatrixHeight;
@@ -74,8 +74,8 @@ constexpr float Vbus5vThreshold = 3.5f;
 constexpr uint32_t DcdcEnableDelayMs = 1200;
 
 constexpr const char *Hostname = "pixel-fluid-clock";
-constexpr const char *NtpServer1 = "pool.ntp.org";
-constexpr const char *NtpServer2 = "time.nist.gov";
+constexpr const char *NtpServer1 = "ntp.aliyun.com";
+constexpr const char *NtpServer2 = "time1.cloud.tencent.com";
 constexpr long GmtOffsetSec = 8 * 3600;
 constexpr int DaylightOffsetSec = 0;
 } // namespace AppConfig

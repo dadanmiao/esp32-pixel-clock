@@ -935,6 +935,13 @@ input[type="range"] {
   padding: 12px;
   border: 1px solid var(--line);
   background: var(--surface-soft);
+  transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.blind-result.revealed {
+  border-color: rgba(24, 135, 105, 0.72);
+  background: #eaf8f2;
+  box-shadow: 0 0 0 3px rgba(24, 135, 105, 0.12);
 }
 
 .blind-result-heading {

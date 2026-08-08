@@ -8,6 +8,7 @@
 
 bool startWiFiManager();
 void serviceWiFiManager();
+bool requestTimeSync();
 bool saveWiFiCredentialsAndConnect(const char *ssid, const char *password);
 void resetWiFiSettingsAndRestart();
 String getWiFiStatusJson();

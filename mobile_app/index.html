@@ -260,6 +260,10 @@
             <button class="tile-button" data-clock-theme="3">夜间</button>
             <button class="tile-button" data-clock-theme="4">极简</button>
           </div>
+          <div class="action-row">
+            <button id="syncTimeBtn" class="primary-action" type="button">立即对时</button>
+          </div>
+          <div id="timeSyncStatus" class="micro-status">使用阿里云和腾讯云国内 NTP 服务器，北京时间 UTC+8。</div>
         </section>
 
         <section class="control-panel" id="panel-audio">
@@ -431,8 +435,9 @@
           </div>
           <div class="action-row">
             <button id="showWeatherBtn">显示天气</button>
-            <button id="refreshWeatherBtn">立即刷新</button>
+            <button id="refreshWeatherBtn" class="primary-action">立即获取天气</button>
           </div>
+          <div id="weatherRefreshStatus" class="micro-status">获取后会更新当前城市的天气，不改变正在显示的模式。</div>
         </section>
 
         <section class="control-panel" id="panel-game">
@@ -530,7 +535,7 @@
             <span id="evidenceLock">盲测</span>
             <span id="evidenceOffline">端侧推理</span>
           </div>
-          <div class="blind-result">
+          <div id="aiBlindResultCard" class="blind-result">
             <div class="blind-result-heading">
               <strong>最近一次盲测结果</strong>
               <span id="aiModelFingerprint" class="mono-pill">模型 --------</span>

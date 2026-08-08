@@ -1648,6 +1648,21 @@ void startWebServer() {
     request->send(response);
   });
   server.on("/api/state", HTTP_GET, sendStateJson);
+  server.on("/api/time/sync", HTTP_POST, [](AsyncWebServerRequest *request) {
+    const bool ok = requestTimeSync();
+    JsonDocument doc;
+    doc["ok"] = ok;
+    doc["server1"] = AppConfig::NtpServer1;
+    doc["server2"] = AppConfig::NtpServer2;
+    doc["time"] = static_cast<uint32_t>(time(nullptr));
+    if (!ok) {
+      doc["error"] = "Wi-Fi not connected";
+    }
+    String body;
+    serializeJson(doc, body);
+    recordCompetitionApiRequest(body.length());
+    request->send(ok ? 200 : 503, "application/json", body);
+  });
   server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "application/json", getWiFiStatusJson());
   });

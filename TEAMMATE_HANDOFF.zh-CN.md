@@ -1,59 +1,81 @@
-# Pixel Clock 队友交付说明
+# PixelFlow Desk AI 队友交付说明
 
-## 包内内容
+当前协作基线为：
 
-- `include/`、`src/`、`data/`：ESP32-S3 固件源码。
-- `platformio.ini`：PlatformIO 工程配置和依赖。
-- `mobile_app/`：Android App 的前端、Capacitor 和 Android 工程源码。
-- `dist/PixelClock-fullflash-v2.2.0.bin`：包含引导程序、分区表和应用的完整镜像，可从 `0x0` 烧录。
-- `dist/PixelClock-firmware-v2.2.0.bin`：应用分区镜像，供 PlatformIO、OTA 或高级调试使用。
-- `dist/PixelClock-mobile-v1.3-debug.apk`：可直接安装的 Android App。
-- `README.zh-CN.md`、`DEVELOPMENT.zh-CN.md`：项目和开发说明。
+```text
+固件: v2.7.3
+Android App: v1.8.2 (versionCode 14)
+主分支: main
+```
 
-## 最快使用方法
+## GitHub 中包含的完整开发内容
 
-1. 使用 PlatformIO 打开工程并点击 `Upload`；也可以把 `dist/PixelClock-fullflash-v2.2.0.bin` 从地址 `0x0` 烧录到同型号 ESP32-S3。
-2. 在 Android 手机上安装 `dist/PixelClock-mobile-v1.3-debug.apk`。
-3. 开发板首次启动后，手机连接热点 `PixelClock-Setup`。
-4. 热点密码为 `pixelclock`，浏览器打开 `http://192.168.4.1`。
-5. 为开发板选择自己的 2.4 GHz Wi-Fi 并输入密码。
-6. 手机切回同一 Wi-Fi，在 App 中点击“查找”，或填写开发板获得的 IP 地址。
+- `include/`、`src/`、`data/`：ESP32-S3 固件源码和设备端页面。
+- `platformio.ini`：PlatformIO 板卡环境、编译选项和固件依赖。
+- `mobile_app/`：App 前端、Capacitor 配置、Android 工程、Gradle Wrapper 和构建脚本。
+- `package-lock.json`：可复现的前端依赖版本。
+- `docs/`：AI 技术设计、比赛演示和验证说明。
+- 根目录 README、开发文档和版本迭代说明。
 
-每块开发板会在自己的 NVS 中保存 Wi-Fi 和显示配置。源码、固件和 APK 不包含当前开发板已经保存的家庭 Wi-Fi 密码。
+以下内容不应提交到 Git：`.pio/`、`node_modules/`、Android SDK、JDK、Gradle 缓存、构建目录、Codex 会话和个人 Wi-Fi 凭据。它们体积大、与本机相关，或包含隐私，不属于源码环境。
 
-## 查看和修改固件代码
+## 队友首次接手
 
-1. 安装 Visual Studio Code。
-2. 安装 PlatformIO IDE 扩展。
-3. 在 VS Code 中打开本交付包的工程根目录。
-4. 用 USB 连接 ESP32-S3。
-5. 在 PlatformIO 中选择 `Build` 编译，选择 `Upload` 烧录。
+```powershell
+git clone https://github.com/dadanmiao/esp32-pixel-clock.git
+cd esp32-pixel-clock
+git checkout main
+```
 
-不要把应用分区文件 `PixelClock-firmware-v2.2.0.bin` 当作完整镜像从 `0x0` 烧录。
+固件开发：安装 Visual Studio Code 与 PlatformIO IDE，打开仓库根目录后执行 `Build`。USB 连接同型号 ESP32-S3 后执行 `Upload`。
 
-主要代码位置：
+App 开发：安装 Node.js、JDK 21 和 Android SDK，然后运行：
 
-- `include/app_config.h`：版本和全局配置。
-- `include/app_state.h`：设备共享状态。
-- `src/display_task.cpp`：时钟、频谱、流体、文字、天气和游戏显示。
-- `src/audio_task.cpp`：麦克风采样、FFT 和音频特征。
-- `src/web_server.cpp`：设备网页和 HTTP/WebSocket API。
-- `src/wifi_manager_app.cpp`：首次配网和 Wi-Fi 管理。
-- `src/settings_storage.cpp`：NVS 设置保存。
+```powershell
+cd mobile_app
+npm ci
+powershell -ExecutionPolicy Bypass -File .\build-apk.ps1
+```
 
-## 构建 Android App
+构建脚本会生成测试 APK。无需把 `node_modules`、本机 SDK 或构建缓存从你的电脑传给队友。
 
-App 源码位于 `mobile_app/`。工程已包含 Capacitor Android 项目，但交付包不包含本机 Android SDK、JDK、Node.js 和 `node_modules`。
+## 首次连接设备
 
-在准备好 Node.js、JDK 21 和 Android SDK 后，可以安装依赖并重新构建；也可以直接安装交付包中的 APK 进行测试。
+未配置网络的开发板会开启热点：
 
-## 推荐协作方式
+```text
+名称: PixelClock-Setup
+密码: pixelclock
+地址: http://192.168.4.1
+```
 
-日常协作建议把源码放入 Git 仓库：
+在配网页面选择 2.4 GHz Wi-Fi。手机与设备进入同一局域网后，在 App 中使用设备 IP 或 `http://pixel-fluid-clock.local` 连接。
 
-1. 一人建立 GitHub、Gitee 或局域网 Git 私有仓库。
-2. 提交源码和文档，不提交 `.pio/`、`node_modules/`、Android SDK、JDK、构建目录和个人 Wi-Fi 配置。
-3. 邀请队友加入仓库，通过提交、拉取和分支同步代码。
-4. 每次稳定版本把固件 BIN 和 APK 作为发布附件保存。
+每块开发板独立保存自己的 Wi-Fi 与显示配置。源码和构建产物不包含你当前开发板 NVS 中的家庭 Wi-Fi 密码。
 
-压缩包适合首次交付和离线备份，Git 仓库更适合后续共同开发。
+## 主要模块
+
+- `src/desk_ai.cpp`：桌面状态特征、个性化/基线/INT8 模型、拒识和评估。
+- `src/scene_engine.cpp`：规则智能场景和 AI 自动场景。
+- `src/audio_task.cpp`：麦克风采样、FFT 与音频特征。
+- `src/sensor_task.cpp`：姿态、光照、温湿度和时间状态。
+- `src/display_task.cpp`：时钟、频谱、流体、文字、天气、计时和游戏。
+- `src/web_server.cpp`：状态接口、控制接口、WebSocket 和比赛证据接口。
+- `mobile_app/app.js`：App 通信、控制、校准、盲测和结果呈现。
+
+完整 AI 原理优先阅读 [`docs/DESK_AI_TECHNICAL_DESIGN.zh-CN.md`](docs/DESK_AI_TECHNICAL_DESIGN.zh-CN.md)，比赛演示顺序阅读 [`docs/COMPETITION_V2_7_DEMO_GUIDE.zh-CN.md`](docs/COMPETITION_V2_7_DEMO_GUIDE.zh-CN.md)。
+
+## 稳定版本发布
+
+Git 仓库保存源码和文档；每个稳定版本在 GitHub Releases 中附加：
+
+```text
+PixelFlow-Firmware-v2.7.3.bin
+PixelClock-debug.apk
+```
+
+固件 BIN 是应用分区镜像，适用于 PlatformIO 生成流程或 OTA。若需从地址 `0x0` 直接烧录，应另外生成包含 bootloader、partition table 和应用的 full-flash 镜像，不能把应用分区 BIN 当作完整镜像使用。
+
+## 协作约定
+
+开发新功能时从最新 `main` 创建分支，提交前先编译对应端，随后通过 Pull Request 合并。修改固件或 App 发布行为时同步更新版本号和相关文档。不要覆盖队友尚未合并的改动，也不要提交真实网络密码、签名密钥或本机工具目录。

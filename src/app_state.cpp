@@ -4,6 +4,8 @@
  */
 #include "app_state.h"
 
+#include <cstring>
+
 SharedState gState;
 
 bool initSharedState() {
@@ -159,6 +161,42 @@ void updateDeskAiState(const DeskAiState &deskAi) {
   }
   if (xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     gState.snapshot.deskAi = deskAi;
+    xSemaphoreGive(gState.mutex);
+  }
+}
+
+void updateDeskAiInferenceState(const DeskAiState &deskAi) {
+  if (!gState.mutex) {
+    return;
+  }
+  if (xSemaphoreTake(gState.mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    const DeskAiState &latest = gState.snapshot.deskAi;
+    DeskAiState merged = deskAi;
+    merged.lastCalibrationLabel = latest.lastCalibrationLabel;
+    merged.lastCalibrationMs = latest.lastCalibrationMs;
+    merged.evaluationTotal = latest.evaluationTotal;
+    merged.personalizedCorrect = latest.personalizedCorrect;
+    merged.baselineCorrect = latest.baselineCorrect;
+    merged.quantizedCorrect = latest.quantizedCorrect;
+    merged.rejectedPredictions = latest.rejectedPredictions;
+    memcpy(merged.evaluationSamples, latest.evaluationSamples, sizeof(merged.evaluationSamples));
+    memcpy(merged.confusion, latest.confusion, sizeof(merged.confusion));
+    merged.lastBlindActual = latest.lastBlindActual;
+    merged.lastBlindPersonalized = latest.lastBlindPersonalized;
+    merged.lastBlindBaseline = latest.lastBlindBaseline;
+    merged.lastBlindQuantized = latest.lastBlindQuantized;
+    merged.lastBlindConfidence = latest.lastBlindConfidence;
+    merged.lastBlindResultMs = latest.lastBlindResultMs;
+    merged.lastEvaluationMs = latest.lastEvaluationMs;
+    if (latest.feedbackResolvedCount > merged.feedbackResolvedCount) {
+      merged.feedbackRequested = latest.feedbackRequested;
+      merged.feedbackSuggestedState = latest.feedbackSuggestedState;
+      merged.feedbackRequestedMs = latest.feedbackRequestedMs;
+      merged.feedbackRequestCount = latest.feedbackRequestCount;
+      merged.feedbackResolvedCount = latest.feedbackResolvedCount;
+      merged.lowConfidenceSinceMs = latest.lowConfidenceSinceMs;
+    }
+    gState.snapshot.deskAi = merged;
     xSemaphoreGive(gState.mutex);
   }
 }

@@ -183,7 +183,10 @@ void extractFeatures(const RenderState &state, float features[DeskAiFeatureCount
   const float gyro = (fabsf(state.environment.gyroX) + fabsf(state.environment.gyroY) +
                       fabsf(state.environment.gyroZ)) * 0.008f;
   const float motion = state.environment.mpuOnline ? clampUnit(accelDelta * 0.85f + gyro) : 0.0f;
-  const float light = clampUnit(static_cast<float>(state.environment.rawLdr) / 4095.0f);
+  // The board's LDR divider reads higher in darkness, while the AI feature
+  // represents illumination: 0 = dark, 1 = bright.
+  const float light =
+      1.0f - clampUnit(static_cast<float>(state.environment.rawLdr) / 4095.0f);
   const float engagement = clampUnit(fmaxf(audio * 0.82f, motion * 0.95f));
 
   features[0] = audio;
@@ -204,6 +207,7 @@ void resetRuntimeClassifier() {
   smoothedFeaturesReady = false;
   memset(smoothedFeatures, 0, sizeof(smoothedFeatures));
 }
+
 } // namespace
 
 const char *deskStateToString(DeskState state) {
@@ -469,6 +473,10 @@ void serviceDeskAi() {
   const uint32_t elapsedUs = micros() - startedUs;
   next.inferenceMicros = static_cast<uint16_t>(elapsedUs < 65535 ? elapsedUs : 65535);
   appendTimeline(next, now, next.state != state.deskAi.state, next.lastInferenceOffline);
-  updateDeskAiState(next);
+
+  // Refresh against the latest model, then atomically merge inference output
+  // without overwriting labels or blind-test evidence.
+  refreshDeskAiProfileMetrics(copyControlState(), next);
+  updateDeskAiInferenceState(next);
   pushRenderSnapshot(0);
 }

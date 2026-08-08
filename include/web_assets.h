@@ -178,6 +178,8 @@ const char IndexHtml[] PROGMEM = R"HTML(
             <option value="3">Night</option>
             <option value="4">Minimal</option>
           </select>
+          <button id="timeSync" type="button">立即对时</button>
+          <div class="note" id="timeSyncStatus">国内 NTP：阿里云 / 腾讯云，北京时间 UTC+8</div>
         </div>
       </div>
     </section>
@@ -609,6 +611,23 @@ document.querySelectorAll("button[data-text]").forEach(btn => btn.onclick = () =
 
 q("color").oninput = e => sendPatch({ color:colorToRgb(e.target.value) }, false);
 q("clockTheme").onchange = e => sendPatch({ clockTheme:Number(e.target.value) });
+q("timeSync").onclick = async () => {
+  const button = q("timeSync");
+  button.disabled = true;
+  setText("timeSyncStatus", "正在向国内 NTP 服务器请求对时...");
+  try {
+    const response = await fetch("/api/time/sync", { method:"POST" });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || ("HTTP " + response.status));
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await refresh();
+    setText("timeSyncStatus", "对时请求成功：" + (result.server1 || "--") + " / " + (result.server2 || "--"));
+  } catch (error) {
+    setText("timeSyncStatus", "对时失败：" + error.message);
+  } finally {
+    button.disabled = false;
+  }
+};
 q("audioVisualMode").onchange = e => sendPatch({ audioVisualMode:Number(e.target.value), mode:1 });
 q("showSpectrumMode").onclick = () => sendPatch({ mode:1 });
 q("audioSensitivity").oninput = e => { setText("audioSensitivityValue", e.target.value); sendRange("audioSensitivity", Number(e.target.value)); };

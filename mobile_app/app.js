@@ -6,7 +6,7 @@ const SCENE_REASONS = ["手动场景", "安静时段", "音乐活动", "姿态�
 const DESK_STATES = ["未知", "专注", "会议", "休息", "离开"];
 const CUSTOM_SCENE_STORAGE_KEY = "pixelClock.customScenes.v1";
 const CUSTOM_SCENE_LIMIT = 12;
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.8.2";
 
 const qs = (selector, root = document) => root.querySelector(selector);
 const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -410,10 +410,21 @@ function bindControls() {
         toast("请先锁定模型，再提交盲测真实标签");
         return;
       }
+      const previousEvaluation = app.state.deskAi?.evaluation || {};
+      const previousTotal = Number(previousEvaluation.total || 0);
+      const previousRecordedMs = Number(previousEvaluation.lastBlind?.recordedMs || 0);
       const ok = await postControl({ deskAiEvaluationLabel: Number(button.dataset.aiEvaluation) });
       if (ok) {
-        await refreshState();
-        toast("真实标签已提交，预测结果已揭示");
+        const revealed = await waitForBlindResult(previousTotal, previousRecordedMs);
+        const card = byId("aiBlindResultCard");
+        if (revealed && card) {
+          card.classList.add("revealed");
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
+          setTimeout(() => card.classList.remove("revealed"), 2400);
+          toast("真实标签已提交，盲测结果已揭示");
+        } else {
+          toast("标签已提交，但结果尚未返回，请稍后刷新");
+        }
       }
     });
   });
@@ -469,6 +480,7 @@ function bindControls() {
   qsa("[data-clock-theme]").forEach((button) => {
     button.addEventListener("click", () => postControl({ clockTheme: Number(button.dataset.clockTheme), mode: 0 }));
   });
+  byId("syncTimeBtn").addEventListener("click", syncTimeNow);
 
   bindSelect("audioVisualMode", (value) => postControl({ audioVisualMode: Number(value), mode: 1 }));
   bindRange("audioSensitivity", "audioSensitivityValue", (value) => postControl({ audioSensitivity: Number(value) }));
@@ -518,7 +530,7 @@ function bindControls() {
   }));
   bindNumber("weatherUpdateIntervalMin", (value) => postControl({ weatherUpdateIntervalMin: Number(value) }));
   byId("showWeatherBtn").addEventListener("click", () => postControl({ mode: 5 }));
-  byId("refreshWeatherBtn").addEventListener("click", () => postControl({ weatherRefresh: true, mode: 5 }));
+  byId("refreshWeatherBtn").addEventListener("click", refreshWeatherNow);
 
   bindSelect("gameType", (value) => postControl({ gameType: Number(value), mode: 6 }));
   bindRange("gameSpeedMs", "gameSpeedValue", (value) => postControl({ gameSpeedMs: Number(value) }), (value) => `${value} ms`);
@@ -819,6 +831,91 @@ async function postControl(patch) {
     updateConnectionUi();
     return false;
   }
+}
+
+async function waitForBlindResult(previousTotal, previousRecordedMs) {
+  if (app.settings.mockMode || !app.connected) {
+    renderAll();
+    return true;
+  }
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 180 : 320));
+    await refreshState();
+    const evaluation = app.state.deskAi?.evaluation || {};
+    const total = Number(evaluation.total || 0);
+    const recordedMs = Number(evaluation.lastBlind?.recordedMs || 0);
+    if (total > previousTotal || recordedMs > previousRecordedMs) {
+      renderAll();
+      return true;
+    }
+  }
+  return false;
+}
+
+async function syncTimeNow() {
+  const button = byId("syncTimeBtn");
+  const status = byId("timeSyncStatus");
+  button.disabled = true;
+  status.textContent = "正在请求开发板通过国内 NTP 服务器对时…";
+  if (app.settings.mockMode || !app.connected) {
+    const now = new Date();
+    app.state.time = now.toLocaleTimeString("zh-CN", { hour12: false });
+    status.textContent = `模拟对时完成：${app.state.time}`;
+    button.disabled = false;
+    renderAll();
+    return;
+  }
+  try {
+    const result = await fetchJson("/api/time/sync", { method: "POST" });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await refreshState();
+    status.textContent =
+      `对时请求成功：${app.state.time || "--:--:--"}，服务器 ${result.server1} / ${result.server2}`;
+    toast("开发板已请求重新对时");
+  } catch (error) {
+    status.textContent = `对时失败：${shortError(error)}`;
+    toast(`对时失败：${shortError(error)}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function refreshWeatherNow() {
+  const button = byId("refreshWeatherBtn");
+  const status = byId("weatherRefreshStatus");
+  const previousSuccess = Number(app.state.weather?.lastSuccessMs || 0);
+  button.disabled = true;
+  status.textContent = `正在获取 ${app.state.weatherCity || "当前城市"} 的最新天气…`;
+  const ok = await postControl({ weatherRefresh: true });
+  if (!ok) {
+    status.textContent = "天气获取请求发送失败，请检查设备连接。";
+    button.disabled = false;
+    return;
+  }
+  if (app.settings.mockMode || !app.connected) {
+    status.textContent = "模拟天气已刷新。";
+    button.disabled = false;
+    return;
+  }
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await refreshState();
+    const weather = app.state.weather || {};
+    if (Number(weather.lastSuccessMs || 0) > previousSuccess) {
+      status.textContent =
+        `获取成功：${weather.city || app.state.weatherCity}，${formatNumber(weather.temperature, 1)} C`;
+      toast("天气数据已更新");
+      button.disabled = false;
+      return;
+    }
+    if (weather.lastError) {
+      status.textContent = `获取失败：${weather.lastError}`;
+    }
+  }
+  status.textContent = app.state.weather?.lastError
+    ? `获取失败：${app.state.weather.lastError}`
+    : "天气请求已提交，服务响应较慢，请稍后查看。";
+  button.disabled = false;
 }
 
 async function sendNotification() {
@@ -1897,10 +1994,10 @@ function renderStateText() {
   byId("aiEvaluationTotal").textContent = String(evaluationTotal);
   byId("aiRejectedPredictions").textContent = String(evaluation.rejectedPredictions || 0);
   const lastBlind = evaluation.lastBlind || {};
-  byId("aiBlindActual").textContent = lastBlind.actualLabel || DESK_STATES[lastBlind.actualState ?? lastBlind.actual] || "--";
-  byId("aiBlindPersonalized").textContent = lastBlind.personalizedLabel || DESK_STATES[lastBlind.personalizedState ?? lastBlind.personalized] || "--";
-  byId("aiBlindBaseline").textContent = lastBlind.baselineLabel || DESK_STATES[lastBlind.baselineState ?? lastBlind.baseline] || "--";
-  byId("aiBlindQuantized").textContent = lastBlind.quantizedLabel || DESK_STATES[lastBlind.quantizedState ?? lastBlind.quantized] || "--";
+  byId("aiBlindActual").textContent = DESK_STATES[lastBlind.actualState ?? lastBlind.actual] || lastBlind.actualLabel || "--";
+  byId("aiBlindPersonalized").textContent = DESK_STATES[lastBlind.personalizedState ?? lastBlind.personalized] || lastBlind.personalizedLabel || "--";
+  byId("aiBlindBaseline").textContent = DESK_STATES[lastBlind.baselineState ?? lastBlind.baseline] || lastBlind.baselineLabel || "--";
+  byId("aiBlindQuantized").textContent = DESK_STATES[lastBlind.quantizedState ?? lastBlind.quantized] || lastBlind.quantizedLabel || "--";
   byId("aiConfusionHint").textContent = evaluationTotal
     ? `混淆矩阵：行是真实状态，列是设备预测。专注 ${evaluation.samples?.[0] ?? 0}、会议 ${evaluation.samples?.[1] ?? 0}、休息 ${evaluation.samples?.[2] ?? 0}、离开 ${evaluation.samples?.[3] ?? 0}。`
     : "还没有验证样本。每个类别多采集几次，比较会更公平。";

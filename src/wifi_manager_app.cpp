@@ -13,7 +13,7 @@
 #include "app_config.h"
 
 namespace {
-constexpr const char *SetupApName = "PixelClock-Setup";
+constexpr const char *SetupApName = "PixelClock-Setup-1";
 constexpr const char *SetupApPassword = "pixelclock";
 constexpr const char *WifiPrefsNamespace = "wifi";
 constexpr uint32_t ReconnectIntervalMs = 30000;
@@ -127,7 +127,8 @@ void configureTimeIfConnected() {
   }
   configTime(AppConfig::GmtOffsetSec, AppConfig::DaylightOffsetSec, AppConfig::NtpServer1, AppConfig::NtpServer2);
   timeConfigured = true;
-  Serial.println("[time] NTP configured");
+  Serial.printf("[time] NTP configured: %s, %s\n",
+                AppConfig::NtpServer1, AppConfig::NtpServer2);
 }
 
 void configureMdnsIfConnected() {
@@ -160,6 +161,17 @@ bool startWiFiManager() {
   startSetupAp();
   beginStationConnect();
   return WiFi.status() == WL_CONNECTED;
+}
+
+bool requestTimeSync() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[time] manual sync rejected: Wi-Fi not connected");
+    return false;
+  }
+  timeConfigured = false;
+  configureTimeIfConnected();
+  Serial.println("[time] manual NTP sync requested");
+  return true;
 }
 
 void serviceWiFiManager() {

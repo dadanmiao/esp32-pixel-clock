@@ -452,6 +452,7 @@ GameState copyGameState();
 void updateGameState(const GameState &game);
 void updateContextState(const ContextState &context);
 void updateDeskAiState(const DeskAiState &deskAi);
+void updateDeskAiInferenceState(const DeskAiState &deskAi);
 void updateCompetitionState(const CompetitionState &competition);
 NotificationState copyNotificationState();
 void updateNotificationState(const NotificationState &notifications);
